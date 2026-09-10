@@ -8,6 +8,24 @@
 ./gradlew run
 ```
 
+### `JAVA_HOME is not set` 에러가 날 때
+
+Gradle을 실행하려면 컴퓨터에 JDK가 설치되어 있어야 합니다. Android Studio를 설치했다면 내부에 JDK(JBR)가 이미 포함되어 있으니 새로 설치할 필요 없이 그 경로를 `JAVA_HOME`으로 지정하면 됩니다.
+
+**Windows (PowerShell)**
+```powershell
+$env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
+./gradlew run
+```
+
+**macOS/Linux**
+```bash
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"   # macOS 예시
+./gradlew run
+```
+
+위 경로가 다르다면 Android Studio > Settings > Build Tools > Gradle 에서 "Gradle JDK" 경로를 확인하세요. 매번 새 터미널을 열 때마다 다시 설정해야 하는 게 번거로우면, Windows는 "시스템 환경 변수 편집"에서 `JAVA_HOME`을 영구적으로 등록하면 됩니다.
+
 ## 조작법
 
 - 이동: `e2e4` (from-square + to-square)
