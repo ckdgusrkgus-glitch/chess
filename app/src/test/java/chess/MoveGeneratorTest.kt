@@ -1,10 +1,10 @@
 package chess
 
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
 
 class MoveGeneratorTest {
 
@@ -66,7 +66,7 @@ class MoveGeneratorTest {
 
         val move = MoveGenerator.legalMovesFrom(board, Square(4, 0)).find { it.isCastleKingSide }
         assertNotNull(move)
-        board.applyMove(move)
+        board.applyMove(move!!)
 
         assertEquals(Piece(PieceType.KING, Color.WHITE), board.pieceAt(Square(6, 0)))
         assertEquals(Piece(PieceType.ROOK, Color.WHITE), board.pieceAt(Square(5, 0)))
@@ -90,7 +90,7 @@ class MoveGeneratorTest {
 
         val epMove = MoveGenerator.legalMovesFrom(board, Square(4, 4)).find { it.isEnPassant }
         assertNotNull(epMove)
-        board.applyMove(epMove)
+        board.applyMove(epMove!!)
 
         assertEquals(Piece(PieceType.PAWN, Color.WHITE), board.pieceAt(Square(3, 5)))
         assertNull(board.pieceAt(Square(3, 4)))
