@@ -25,7 +25,13 @@ class ChessAi(private val level: AiLevel, private val random: Random = Random.De
         val scored = orderedMoves(board, legalMoves).map { move ->
             val copy = board.copy()
             copy.applyMove(move)
-            val score = -search(copy, level.depth - 1, 1, -INFINITY, INFINITY, deadline)
+            // Once time is up, stop recursing altogether and fall back to a cheap static eval so a
+            // slow device still finishes the root loop quickly instead of overrunning the budget.
+            val score = if (System.nanoTime() > deadline) {
+                -Evaluator.evaluate(copy)
+            } else {
+                -search(copy, level.depth - 1, 1, -INFINITY, INFINITY, deadline)
+            }
             move to score
         }.sortedByDescending { it.second }
 
@@ -34,11 +40,17 @@ class ChessAi(private val level: AiLevel, private val random: Random = Random.De
     }
 
     private fun search(board: Board, depth: Int, ply: Int, alphaIn: Int, beta: Int, deadline: Long): Int {
+        // Checked before generating moves: once time is up, bail out in O(1) rather than paying for
+        // a full legal-move generation pass on every remaining node in the tree.
+        if (System.nanoTime() > deadline) {
+            return quiescence(board, alphaIn, beta, deadline, MAX_QUIESCENCE_DEPTH)
+        }
+
         val moves = MoveGenerator.legalMoves(board, board.sideToMove)
         if (moves.isEmpty()) {
             return if (board.isInCheck(board.sideToMove)) -(MATE_SCORE - ply) else 0
         }
-        if (depth <= 0 || System.nanoTime() > deadline) {
+        if (depth <= 0) {
             return quiescence(board, alphaIn, beta, deadline, 0)
         }
 
@@ -93,7 +105,7 @@ class ChessAi(private val level: AiLevel, private val random: Random = Random.De
     companion object {
         private const val INFINITY = 1_000_000
         private const val MATE_SCORE = 100_000
-        private const val TIME_BUDGET_NANOS = 4_000_000_000L
+        private const val TIME_BUDGET_NANOS = 2_500_000_000L
         private const val MAX_QUIESCENCE_DEPTH = 6
 
         private val PIECE_ORDER_VALUE = mapOf(

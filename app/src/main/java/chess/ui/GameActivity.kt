@@ -3,11 +3,15 @@ package chess.ui
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import chess.Board
 import chess.Color
 import chess.GameStatus
+import chess.Move
+import chess.MoveGenerator
 import chess.PieceType
 import chess.Square
 import chess.ai.AiLevel
@@ -29,6 +33,9 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
 
     private var aiExecutor: ExecutorService? = null
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    /** Generation of the AI request still awaiting resolution, or null if none is outstanding. */
+    private var pendingAiGeneration: Int? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -86,14 +93,34 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
 
         val snapshot = boardView.game.board.copy()
         val generation = boardView.currentGeneration
+        pendingAiGeneration = generation
+
+        // Belt-and-suspenders: if the search hangs or misbehaves for any reason on a given device,
+        // this guarantees the game recovers on its own instead of getting stuck forever.
+        mainHandler.postDelayed({ resolveAiMove(generation, randomFallbackMove(snapshot)) }, AI_WATCHDOG_TIMEOUT_MS)
+
         executor.execute {
-            val move = ai.chooseMove(snapshot)
-            mainHandler.post {
-                if (isFinishing || isDestroyed) return@post
-                boardView.inputEnabled = true
-                if (move != null) boardView.applyExternalMove(move, generation)
+            val computed = try {
+                ai.chooseMove(snapshot)
+            } catch (t: Throwable) {
+                Log.e(TAG, "AI move computation failed", t)
+                null
             }
+            val move = computed ?: randomFallbackMove(snapshot)
+            mainHandler.post { resolveAiMove(generation, move) }
         }
+    }
+
+    private fun randomFallbackMove(board: Board): Move? =
+        MoveGenerator.legalMoves(board, board.sideToMove).randomOrNull()
+
+    /** Applies the AI's move, but only for whichever caller (the real result or the watchdog) gets here first. */
+    private fun resolveAiMove(generation: Int, move: Move?) {
+        if (pendingAiGeneration != generation) return
+        pendingAiGeneration = null
+        if (isFinishing || isDestroyed) return
+        boardView.inputEnabled = true
+        if (move != null) boardView.applyExternalMove(move, generation)
     }
 
     override fun onPromotionNeeded(from: Square, to: Square, onChosen: (PieceType) -> Unit) {
@@ -122,5 +149,7 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
 
     companion object {
         const val EXTRA_AI_LEVEL = "chess.ui.EXTRA_AI_LEVEL"
+        private const val TAG = "GameActivity"
+        private const val AI_WATCHDOG_TIMEOUT_MS = 8_000L
     }
 }
