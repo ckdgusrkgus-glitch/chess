@@ -36,7 +36,14 @@ class ChessBoardView @JvmOverloads constructor(
 
     var listener: Listener? = null
 
+    /** While false, taps are ignored — used to lock the board out while an AI move is computing. */
+    var inputEnabled: Boolean = true
+
     val game = ChessGame()
+
+    /** Bumped by [newGame]; lets a caller discard a stale async result (e.g. a superseded AI move). */
+    val currentGeneration: Int get() = generation
+    private var generation = 0
 
     private var selected: Square? = null
     private var legalTargets: List<Move> = emptyList()
@@ -213,6 +220,7 @@ class ChessBoardView @JvmOverloads constructor(
     }
 
     private fun handleTap(square: Square) {
+        if (!inputEnabled) return
         if (game.status() != GameStatus.ONGOING) return
 
         val currentSelected = selected
@@ -285,10 +293,21 @@ class ChessBoardView @JvmOverloads constructor(
     }
 
     fun newGame() {
+        generation++
         game.board.setup()
         lastMove = null
+        inputEnabled = true
         deselect()
         refreshStatus()
+    }
+
+    /**
+     * Applies a move computed off-thread (e.g. by [chess.ai.ChessAi]). Ignored if [expectedGeneration]
+     * no longer matches [currentGeneration], meaning the game was reset while the move was computing.
+     */
+    fun applyExternalMove(move: Move, expectedGeneration: Int) {
+        if (expectedGeneration != generation) return
+        afterMove(move)
     }
 
     fun refreshStatus() {

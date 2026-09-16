@@ -28,10 +28,20 @@
         android:textSize="30sp" />
 
     <com.google.android.material.button.MaterialButton
-        android:id="@+id/startButton"
+        android:id="@+id/twoPlayerButton"
         android:layout_width="240dp"
         android:layout_height="56dp"
-        android:text="@string/start_game"
+        android:text="@string/two_player"
+        android:textSize="18sp"
+        app:cornerRadius="12dp"
+        app:backgroundTint="@color/accent_green" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/vsAiButton"
+        android:layout_width="240dp"
+        android:layout_height="56dp"
+        android:layout_marginTop="16dp"
+        android:text="@string/vs_ai"
         android:textSize="18sp"
         app:cornerRadius="12dp"
         app:backgroundTint="@color/accent_green" />

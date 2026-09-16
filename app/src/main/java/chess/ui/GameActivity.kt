@@ -1,6 +1,8 @@
 package chess.ui
 
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -8,13 +10,25 @@ import chess.Color
 import chess.GameStatus
 import chess.PieceType
 import chess.Square
+import chess.ai.AiLevel
+import chess.ai.ChessAi
 import com.ckdgusrkgus.chess.R
 import com.google.android.material.button.MaterialButton
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
 
     private lateinit var boardView: ChessBoardView
     private lateinit var statusText: TextView
+    private lateinit var blackLabel: TextView
+
+    /** Fixed for simplicity: the human always plays White, the AI (if any) always plays Black. */
+    private val aiColor = Color.BLACK
+    private var chessAi: ChessAi? = null
+
+    private var aiExecutor: ExecutorService? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -22,12 +36,27 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
 
         boardView = findViewById(R.id.chessBoardView)
         statusText = findViewById(R.id.statusText)
+        blackLabel = findViewById(R.id.blackLabel)
+
+        val levelName = intent.getStringExtra(EXTRA_AI_LEVEL)
+        val level = levelName?.let { runCatching { AiLevel.valueOf(it) }.getOrNull() }
+        if (level != null) {
+            chessAi = ChessAi(level)
+            aiExecutor = Executors.newSingleThreadExecutor()
+            blackLabel.text = getString(R.string.label_black_ai, level.label, level.rating)
+        }
 
         boardView.listener = this
         boardView.refreshStatus()
 
         findViewById<MaterialButton>(R.id.resignButton).setOnClickListener { confirmResign() }
         findViewById<MaterialButton>(R.id.newGameButton).setOnClickListener { boardView.newGame() }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        aiExecutor?.shutdownNow()
+        mainHandler.removeCallbacksAndMessages(null)
     }
 
     override fun onStatusChanged(status: GameStatus, sideToMove: Color, inCheck: Boolean) {
@@ -41,6 +70,29 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
             GameStatus.STALEMATE -> getString(R.string.stalemate)
             GameStatus.DRAW_FIFTY_MOVE -> getString(R.string.draw_fifty_move)
             GameStatus.DRAW_INSUFFICIENT_MATERIAL -> getString(R.string.draw_insufficient_material)
+        }
+
+        if (status == GameStatus.ONGOING && sideToMove == aiColor) {
+            requestAiMove()
+        }
+    }
+
+    private fun requestAiMove() {
+        val ai = chessAi ?: return
+        val executor = aiExecutor ?: return
+
+        boardView.inputEnabled = false
+        statusText.text = getString(R.string.ai_thinking)
+
+        val snapshot = boardView.game.board.copy()
+        val generation = boardView.currentGeneration
+        executor.execute {
+            val move = ai.chooseMove(snapshot)
+            mainHandler.post {
+                if (isFinishing || isDestroyed) return@post
+                boardView.inputEnabled = true
+                if (move != null) boardView.applyExternalMove(move, generation)
+            }
         }
     }
 
@@ -66,5 +118,9 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
             .setPositiveButton(R.string.yes) { _, _ -> finish() }
             .setNegativeButton(R.string.no, null)
             .show()
+    }
+
+    companion object {
+        const val EXTRA_AI_LEVEL = "chess.ui.EXTRA_AI_LEVEL"
     }
 }
