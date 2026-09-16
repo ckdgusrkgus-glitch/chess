@@ -12,6 +12,14 @@ import kotlin.random.Random
  */
 class ChessAi(private val level: AiLevel, private val random: Random = Random.Default) {
 
+    /**
+     * Nodes visited in the current [chooseMove] call. Checked alongside the wall-clock deadline
+     * so the worst case is bounded even on a device far slower than expected — time alone isn't
+     * enough, since on a slow enough interpreter even the "already out of time" bail-out path
+     * (one legal-move generation per node) adds up before it's checked again.
+     */
+    private var nodesVisited = 0
+
     /** Picks a move for the side to move on [board], or null if no legal move exists. */
     fun chooseMove(board: Board): Move? {
         val legalMoves = MoveGenerator.legalMoves(board, board.sideToMove)
@@ -21,13 +29,14 @@ class ChessAi(private val level: AiLevel, private val random: Random = Random.De
             return legalMoves[random.nextInt(legalMoves.size)]
         }
 
+        nodesVisited = 0
         val deadline = System.nanoTime() + TIME_BUDGET_NANOS
         val scored = orderedMoves(board, legalMoves).map { move ->
             val copy = board.copy()
             copy.applyMove(move)
-            // Once time is up, stop recursing altogether and fall back to a cheap static eval so a
-            // slow device still finishes the root loop quickly instead of overrunning the budget.
-            val score = if (System.nanoTime() > deadline) {
+            // Once the budget is spent, stop recursing altogether and fall back to a cheap static
+            // eval so a slow device still finishes the root loop quickly.
+            val score = if (budgetExceeded(deadline)) {
                 -Evaluator.evaluate(copy)
             } else {
                 -search(copy, level.depth - 1, 1, -INFINITY, INFINITY, deadline)
@@ -39,10 +48,16 @@ class ChessAi(private val level: AiLevel, private val random: Random = Random.De
         return scored.subList(0, poolSize)[random.nextInt(poolSize)].first
     }
 
+    /** True once either budget is spent. Always call at most once per node — it also counts the node. */
+    private fun budgetExceeded(deadline: Long): Boolean {
+        nodesVisited++
+        return nodesVisited > MAX_NODES || System.nanoTime() > deadline
+    }
+
     private fun search(board: Board, depth: Int, ply: Int, alphaIn: Int, beta: Int, deadline: Long): Int {
-        // Checked before generating moves: once time is up, bail out in O(1) rather than paying for
-        // a full legal-move generation pass on every remaining node in the tree.
-        if (System.nanoTime() > deadline) {
+        // Checked before generating moves: once the budget is spent, bail out in O(1) rather than
+        // paying for a full legal-move generation pass on every remaining node in the tree.
+        if (budgetExceeded(deadline)) {
             return quiescence(board, alphaIn, beta, deadline, MAX_QUIESCENCE_DEPTH)
         }
 
@@ -68,7 +83,7 @@ class ChessAi(private val level: AiLevel, private val random: Random = Random.De
     /** Extends the search through captures only, to avoid misjudging a position mid-exchange. */
     private fun quiescence(board: Board, alphaIn: Int, beta: Int, deadline: Long, qDepth: Int): Int {
         val standPat = Evaluator.evaluate(board)
-        if (qDepth >= MAX_QUIESCENCE_DEPTH || System.nanoTime() > deadline) return standPat
+        if (qDepth >= MAX_QUIESCENCE_DEPTH || budgetExceeded(deadline)) return standPat
 
         var alpha = alphaIn
         if (standPat >= beta) return beta
@@ -105,8 +120,9 @@ class ChessAi(private val level: AiLevel, private val random: Random = Random.De
     companion object {
         private const val INFINITY = 1_000_000
         private const val MATE_SCORE = 100_000
-        private const val TIME_BUDGET_NANOS = 2_500_000_000L
-        private const val MAX_QUIESCENCE_DEPTH = 6
+        private const val TIME_BUDGET_NANOS = 1_500_000_000L
+        private const val MAX_NODES = 20_000
+        private const val MAX_QUIESCENCE_DEPTH = 4
 
         private val PIECE_ORDER_VALUE = mapOf(
             PieceType.PAWN to 100,

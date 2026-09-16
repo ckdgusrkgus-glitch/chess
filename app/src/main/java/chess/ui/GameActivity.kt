@@ -94,10 +94,15 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
         val snapshot = boardView.game.board.copy()
         val generation = boardView.currentGeneration
         pendingAiGeneration = generation
+        val startedAt = System.currentTimeMillis()
+        Log.i(TAG, "AI move requested (generation=$generation)")
 
         // Belt-and-suspenders: if the search hangs or misbehaves for any reason on a given device,
         // this guarantees the game recovers on its own instead of getting stuck forever.
-        mainHandler.postDelayed({ resolveAiMove(generation, randomFallbackMove(snapshot)) }, AI_WATCHDOG_TIMEOUT_MS)
+        mainHandler.postDelayed({
+            Log.w(TAG, "AI move watchdog fired after ${System.currentTimeMillis() - startedAt}ms (generation=$generation)")
+            resolveAiMove(generation, randomFallbackMove(snapshot))
+        }, AI_WATCHDOG_TIMEOUT_MS)
 
         executor.execute {
             val computed = try {
@@ -107,6 +112,8 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
                 null
             }
             val move = computed ?: randomFallbackMove(snapshot)
+            val elapsed = System.currentTimeMillis() - startedAt
+            Log.i(TAG, "AI move computed in ${elapsed}ms (generation=$generation): $move")
             mainHandler.post { resolveAiMove(generation, move) }
         }
     }
@@ -116,7 +123,10 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
 
     /** Applies the AI's move, but only for whichever caller (the real result or the watchdog) gets here first. */
     private fun resolveAiMove(generation: Int, move: Move?) {
-        if (pendingAiGeneration != generation) return
+        if (pendingAiGeneration != generation) {
+            Log.i(TAG, "Ignoring superseded AI result for generation=$generation")
+            return
+        }
         pendingAiGeneration = null
         if (isFinishing || isDestroyed) return
         boardView.inputEnabled = true
@@ -150,6 +160,6 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
     companion object {
         const val EXTRA_AI_LEVEL = "chess.ui.EXTRA_AI_LEVEL"
         private const val TAG = "GameActivity"
-        private const val AI_WATCHDOG_TIMEOUT_MS = 8_000L
+        private const val AI_WATCHDOG_TIMEOUT_MS = 5_000L
     }
 }

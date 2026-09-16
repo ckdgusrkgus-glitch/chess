@@ -12,6 +12,6 @@ package chess.ai
 enum class AiLevel(val label: String, val rating: Int, val depth: Int, val blunderChance: Double, val randomPoolSize: Int) {
     BEGINNER("초급", 800, 1, 0.30, 5),
     INTERMEDIATE("중급", 1200, 2, 0.12, 3),
-    ADVANCED("상급", 1600, 3, 0.0, 2),
-    MASTER("최상급", 2000, 4, 0.0, 1)
+    ADVANCED("상급", 1600, 2, 0.0, 2),
+    MASTER("최상급", 2000, 3, 0.0, 1)
 }
