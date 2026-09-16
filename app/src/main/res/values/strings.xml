@@ -5,12 +5,14 @@
 
     <string name="two_player">2인 대전</string>
     <string name="vs_ai">AI와 대결</string>
+    <string name="review_games">경기 복기</string>
     <string name="exit">종료</string>
 
     <string name="choose_ai_level">AI 난이도를 선택하세요</string>
     <string name="ai_thinking">AI가 생각 중…</string>
     <string name="ai_level_option">%1$s (레이팅 %2$d)</string>
-    <string name="label_black_ai">흑 · AI %1$s (%2$d)</string>
+    <string name="label_ai_format">%1$s · AI %2$s (%3$d)</string>
+    <string name="resigned_result">기권으로 종료</string>
 
     <string name="turn_white">백 차례</string>
     <string name="turn_black">흑 차례</string>
@@ -36,4 +38,20 @@
 
     <string name="label_black">흑</string>
     <string name="label_white">백</string>
+
+    <string name="history_title">최근 경기 복기</string>
+    <string name="history_empty">아직 기록된 게임이 없습니다.</string>
+    <string name="history_row_format">%1$s · %2$s · %3$s</string>
+    <string name="history_you_played_white">백 플레이</string>
+    <string name="history_you_played_black">흑 플레이</string>
+    <string name="back">뒤로</string>
+
+    <string name="review_move_counter">수 %1$d / %2$d</string>
+    <string name="review_start_position">시작 위치</string>
+    <string name="review_actual_move">실제 수: %1$s</string>
+    <string name="review_game_ended">게임 종료: %1$s</string>
+    <string name="review_ai_suggestion">AI 추천: %1$s</string>
+    <string name="review_ai_suggestion_none">AI 추천 없음</string>
+    <string name="review_prev">이전</string>
+    <string name="review_next">다음</string>
 </resources>

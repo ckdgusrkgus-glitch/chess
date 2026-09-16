@@ -18,7 +18,8 @@ import chess.Square
 import com.ckdgusrkgus.chess.R
 
 /**
- * Draws an 8x8 chess board (white always at the bottom) and handles tap-to-move input.
+ * Draws an 8x8 chess board (white at the bottom, or black at the bottom when [flipped]) and
+ * handles tap-to-move input.
  *
  * Tapping a piece shows every reachable square: a dot for a fully legal move, a ring for a
  * legal capture, and a small X for a square the piece could geometrically reach but that would
@@ -32,12 +33,20 @@ class ChessBoardView @JvmOverloads constructor(
     interface Listener {
         fun onStatusChanged(status: GameStatus, sideToMove: Color, inCheck: Boolean)
         fun onPromotionNeeded(from: Square, to: Square, onChosen: (PieceType) -> Unit)
+        fun onMoveMade(move: Move) {}
     }
 
     var listener: Listener? = null
 
     /** While false, taps are ignored — used to lock the board out while an AI move is computing. */
     var inputEnabled: Boolean = true
+
+    /** True to draw/interpret the board from Black's side (Black's pieces at the bottom). */
+    var flipped: Boolean = false
+        set(value) {
+            field = value
+            invalidate()
+        }
 
     val game = ChessGame()
 
@@ -100,6 +109,10 @@ class ChessBoardView @JvmOverloads constructor(
         textAlign = Paint.Align.CENTER
     }
 
+    /** Maps a screen (row, col) grid cell to a board square, honoring [flipped]. */
+    private fun squareAt(row: Int, col: Int): Square =
+        if (flipped) Square(7 - col, row) else Square(col, 7 - row)
+
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         cellSize = minOf(w, h) / 8f
@@ -130,9 +143,9 @@ class ChessBoardView @JvmOverloads constructor(
 
         for (row in 0..7) {
             for (col in 0..7) {
-                val file = col
-                val rank = 7 - row
-                val square = Square(file, rank)
+                val square = squareAt(row, col)
+                val file = square.file
+                val rank = square.rank
                 val isDark = (file + rank) % 2 == 0
                 val left = col * cellSize
                 val top = row * cellSize
@@ -208,7 +221,7 @@ class ChessBoardView @JvmOverloads constructor(
         if (event.action == MotionEvent.ACTION_UP && cellSize > 0f) {
             val col = (event.x / cellSize).toInt().coerceIn(0, 7)
             val row = (event.y / cellSize).toInt().coerceIn(0, 7)
-            handleTap(Square(col, 7 - row))
+            handleTap(squareAt(row, col))
             performClick()
         }
         return true
@@ -289,6 +302,7 @@ class ChessBoardView @JvmOverloads constructor(
         legalTargets = emptyList()
         unsafeTargets = emptyList()
         invalidate()
+        listener?.onMoveMade(move)
         refreshStatus()
     }
 

@@ -47,6 +47,17 @@
         app:backgroundTint="@color/accent_green" />
 
     <com.google.android.material.button.MaterialButton
+        android:id="@+id/reviewButton"
+        android:layout_width="240dp"
+        android:layout_height="56dp"
+        android:layout_marginTop="16dp"
+        android:text="@string/review_games"
+        android:textSize="18sp"
+        android:textColor="@color/text_primary"
+        app:cornerRadius="12dp"
+        app:backgroundTint="@color/panel_bg" />
+
+    <com.google.android.material.button.MaterialButton
         android:id="@+id/exitButton"
         android:layout_width="240dp"
         android:layout_height="56dp"

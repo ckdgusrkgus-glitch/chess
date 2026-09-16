@@ -16,19 +16,25 @@ import chess.PieceType
 import chess.Square
 import chess.ai.AiLevel
 import chess.ai.ChessAi
+import chess.history.GameHistoryStore
+import chess.history.GameRecord
+import chess.toAlgebraic
 import com.ckdgusrkgus.chess.R
 import com.google.android.material.button.MaterialButton
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import kotlin.random.Random
 
 class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
 
     private lateinit var boardView: ChessBoardView
     private lateinit var statusText: TextView
-    private lateinit var blackLabel: TextView
+    private lateinit var topLabel: TextView
+    private lateinit var bottomLabel: TextView
 
-    /** Fixed for simplicity: the human always plays White, the AI (if any) always plays Black. */
-    private val aiColor = Color.BLACK
+    /** Which color the AI controls this game; the other color is the human's. Randomized per game. */
+    private var aiColor: Color = Color.BLACK
+    private var currentAiLevel: AiLevel? = null
     private var chessAi: ChessAi? = null
 
     private var aiExecutor: ExecutorService? = null
@@ -37,27 +43,62 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
     /** Generation of the AI request still awaiting resolution, or null if none is outstanding. */
     private var pendingAiGeneration: Int? = null
 
+    private val moveHistory = mutableListOf<String>()
+    private val historyStore by lazy { GameHistoryStore(this) }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_game)
 
         boardView = findViewById(R.id.chessBoardView)
         statusText = findViewById(R.id.statusText)
-        blackLabel = findViewById(R.id.blackLabel)
+        topLabel = findViewById(R.id.topLabel)
+        bottomLabel = findViewById(R.id.bottomLabel)
 
         val levelName = intent.getStringExtra(EXTRA_AI_LEVEL)
         val level = levelName?.let { runCatching { AiLevel.valueOf(it) }.getOrNull() }
+        currentAiLevel = level
         if (level != null) {
+            randomizeAiSide()
             chessAi = ChessAi(level)
             aiExecutor = Executors.newSingleThreadExecutor()
-            blackLabel.text = getString(R.string.label_black_ai, level.label, level.rating)
         }
+        updateSideLabels()
 
         boardView.listener = this
         boardView.refreshStatus()
 
         findViewById<MaterialButton>(R.id.resignButton).setOnClickListener { confirmResign() }
-        findViewById<MaterialButton>(R.id.newGameButton).setOnClickListener { boardView.newGame() }
+        findViewById<MaterialButton>(R.id.newGameButton).setOnClickListener {
+            moveHistory.clear()
+            currentAiLevel?.let { randomizeAiSide() }
+            updateSideLabels()
+            boardView.newGame()
+        }
+    }
+
+    /** Randomly gives the AI White or Black this game, and flips the board so the human sits at the bottom. */
+    private fun randomizeAiSide() {
+        val humanPlaysWhite = Random.nextBoolean()
+        aiColor = if (humanPlaysWhite) Color.BLACK else Color.WHITE
+        boardView.flipped = !humanPlaysWhite
+    }
+
+    private fun updateSideLabels() {
+        val topColor = if (boardView.flipped) Color.WHITE else Color.BLACK
+        val bottomColor = if (boardView.flipped) Color.BLACK else Color.WHITE
+        topLabel.text = sideLabel(topColor)
+        bottomLabel.text = sideLabel(bottomColor)
+    }
+
+    private fun sideLabel(color: Color): String {
+        val base = if (color == Color.WHITE) getString(R.string.label_white) else getString(R.string.label_black)
+        val level = currentAiLevel
+        return if (level != null && color == aiColor) {
+            getString(R.string.label_ai_format, base, level.label, level.rating)
+        } else {
+            base
+        }
     }
 
     override fun onDestroy() {
@@ -66,8 +107,12 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
         mainHandler.removeCallbacksAndMessages(null)
     }
 
+    override fun onMoveMade(move: Move) {
+        moveHistory.add(move.toAlgebraic())
+    }
+
     override fun onStatusChanged(status: GameStatus, sideToMove: Color, inCheck: Boolean) {
-        statusText.text = when (status) {
+        val resultText = when (status) {
             GameStatus.ONGOING -> {
                 val turn = if (sideToMove == Color.WHITE) getString(R.string.turn_white) else getString(R.string.turn_black)
                 if (inCheck) "$turn - ${getString(R.string.check_banner)}" else turn
@@ -78,10 +123,26 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
             GameStatus.DRAW_FIFTY_MOVE -> getString(R.string.draw_fifty_move)
             GameStatus.DRAW_INSUFFICIENT_MATERIAL -> getString(R.string.draw_insufficient_material)
         }
+        statusText.text = resultText
 
-        if (status == GameStatus.ONGOING && sideToMove == aiColor) {
+        if (status != GameStatus.ONGOING) {
+            saveGameRecord(resultText)
+        } else if (sideToMove == aiColor) {
             requestAiMove()
         }
+    }
+
+    private fun saveGameRecord(resultText: String) {
+        if (moveHistory.isEmpty()) return
+        val record = GameRecord(
+            timestampMillis = System.currentTimeMillis(),
+            humanColor = if (chessAi != null) aiColor.opposite() else null,
+            opponentLabel = currentAiLevel?.let { getString(R.string.ai_level_option, it.label, it.rating) }
+                ?: getString(R.string.two_player),
+            result = resultText,
+            moves = moveHistory.toList()
+        )
+        historyStore.addGame(record)
     }
 
     private fun requestAiMove() {
@@ -152,7 +213,10 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
         AlertDialog.Builder(this)
             .setTitle(R.string.resign_confirm_title)
             .setMessage(R.string.resign_confirm_message)
-            .setPositiveButton(R.string.yes) { _, _ -> finish() }
+            .setPositiveButton(R.string.yes) { _, _ ->
+                saveGameRecord(getString(R.string.resigned_result))
+                finish()
+            }
             .setNegativeButton(R.string.no, null)
             .show()
     }

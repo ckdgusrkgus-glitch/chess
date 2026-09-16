@@ -20,6 +20,9 @@ class MainActivity : AppCompatActivity() {
         findViewById<MaterialButton>(R.id.vsAiButton).setOnClickListener {
             showAiLevelPicker()
         }
+        findViewById<MaterialButton>(R.id.reviewButton).setOnClickListener {
+            startActivity(Intent(this, HistoryActivity::class.java))
+        }
         findViewById<MaterialButton>(R.id.exitButton).setOnClickListener {
             finishAffinity()
         }

@@ -21,6 +21,14 @@
             android:name="chess.ui.GameActivity"
             android:exported="false" />
 
+        <activity
+            android:name="chess.ui.HistoryActivity"
+            android:exported="false" />
+
+        <activity
+            android:name="chess.ui.ReviewActivity"
+            android:exported="false" />
+
     </application>
 
 </manifest>
