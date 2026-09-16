@@ -307,6 +307,7 @@ class ChessBoardView @JvmOverloads constructor(
      */
     fun applyExternalMove(move: Move, expectedGeneration: Int) {
         if (expectedGeneration != generation) return
+        game.board.applyMove(move)
         afterMove(move)
     }
 
