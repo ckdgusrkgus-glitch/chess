@@ -83,6 +83,7 @@
     <string name="explanation_scenario_played">둔 수: %1$s</string>
     <string name="explanation_scenario_played_and_punish">둔 수 + 상대 응수: %1$s</string>
     <string name="explanation_scenario_best">최선의 수: %1$s</string>
+    <string name="explanation_scenario_followup">예상 진행 보기</string>
 
     <string name="explain_leads_to_mate">체크메이트로 이어짐</string>
     <string name="explain_blunder_played">둔 수: %1$s (평가 %2$s)</string>
@@ -91,6 +92,7 @@
     <string name="explain_brilliant">%1$s는 기물을 희생하는 것처럼 보이지만, 엔진이 찾은 최선의 수입니다 (평가 %2$s). 상대가 그 기물을 잡아도 형세를 유지하거나 오히려 유리해집니다.</string>
     <string name="explain_missed_win_best">최선의 수는 %1$s로, 평가 %2$s를 유지할 수 있었습니다.</string>
     <string name="explain_missed_win_played">대신 둔 수(%1$s, 평가 %2$s)는 그 우위를 상당 부분 놓쳤습니다.</string>
+    <string name="explain_followup">예상 진행: %1$s</string>
 
     <string name="piece_name_pawn">폰</string>
     <string name="piece_name_knight">나이트</string>

@@ -81,4 +81,20 @@ class MateLineTest {
         assertTrue(after.isInCheck(after.sideToMove))
         assertTrue(MoveGenerator.legalMoves(after, after.sideToMove).isEmpty())
     }
+
+    @Test
+    fun `findMateLine on an ordinary position just returns a short best-play continuation`() {
+        // Used by ReviewActivity for the "what happens next" follow-up in a move explanation —
+        // most positions it's called on are nowhere near mate, so it must terminate cleanly at
+        // maxPlies rather than assuming a mate is coming.
+        val board = Board().apply { setup() }
+        val ai = ChessAi(AiLevel.MASTER, Random(1))
+        val line = ai.findMateLine(board, maxPlies = 6)
+        assertEquals(6, line.size)
+
+        val after = board.copy()
+        for (move in line) after.applyMove(move)
+        // Just needs to have played out without throwing; the game shouldn't be over this early.
+        assertTrue(MoveGenerator.legalMoves(after, after.sideToMove).isNotEmpty())
+    }
 }

@@ -187,8 +187,10 @@ class ReviewActivity : AppCompatActivity() {
     /**
      * Only for Blunder/Brilliant/Missed Win (see [MoveExplanation.EXPLAINABLE]): gathers the facts
      * a "why" screen needs. For a blunder specifically, this pays for one more engine search (from
-     * the position right after the played move) to find the reply that actually punishes it —
-     * cheap next to the search that already ran for [evaluations], and only done when relevant.
+     * the position right after the played move) to find the reply that actually punishes it, and
+     * for all three, another few plies of best play past whichever move matters for that verdict
+     * ([MoveExplanation.followUpLine]) — without it, the explanation text is the same boilerplate
+     * sentence every time regardless of what the position actually holds.
      */
     private fun buildExplanation(
         quality: MoveQuality?,
@@ -199,10 +201,29 @@ class ReviewActivity : AppCompatActivity() {
     ): MoveExplanation? {
         if (quality == null || quality !in MoveExplanation.EXPLAINABLE || playedMove == null || best == null) return null
         val playedScore = evaluations.find { it.move == playedMove }?.score ?: 0
+        val ai = ChessAi(AiLevel.MASTER)
+
         val punishingReply = if (quality == MoveQuality.BLUNDER) {
             val afterPlayed = boardBefore.copy().apply { applyMove(playedMove) }
-            runCatching { ChessAi(AiLevel.MASTER).evaluateAllMoves(afterPlayed).firstOrNull() }.getOrNull()
+            runCatching { ai.evaluateAllMoves(afterPlayed).firstOrNull() }.getOrNull()
         } else null
+
+        // The position the follow-up line should be judged from: right after the sacrifice for
+        // Brilliant, after the opponent's punishing reply for Blunder, after the missed best move
+        // for Missed Win — i.e. wherever the "so what happens next" question is actually about.
+        val anchor = runCatching {
+            when (quality) {
+                MoveQuality.BRILLIANT -> boardBefore.copy().apply { applyMove(playedMove) }
+                MoveQuality.BLUNDER -> boardBefore.copy().apply {
+                    applyMove(playedMove)
+                    punishingReply?.let { applyMove(it.move) }
+                }
+                MoveQuality.MISSED_WIN -> boardBefore.copy().apply { applyMove(best.move) }
+                else -> null
+            }
+        }.getOrNull()
+        val followUpLine = anchor?.let { runCatching { ai.findMateLine(it, maxPlies = 6) }.getOrDefault(emptyList()) }.orEmpty()
+
         return MoveExplanation(
             quality = quality,
             playedMove = playedMove,
@@ -210,7 +231,8 @@ class ReviewActivity : AppCompatActivity() {
             bestMove = best.move,
             bestScore = best.score,
             punishingReply = punishingReply?.move,
-            punishingReplyScore = punishingReply?.score
+            punishingReplyScore = punishingReply?.score,
+            followUpLine = followUpLine
         )
     }
 
@@ -275,6 +297,12 @@ class ReviewActivity : AppCompatActivity() {
         intent.putExtra(MoveExplanationActivity.EXTRA_BEST_MOVE, explanation.bestMove.toAlgebraic())
         intent.putExtra(MoveExplanationActivity.EXTRA_BEST_SCORE, explanation.bestScore)
         explanation.punishingReply?.let { intent.putExtra(MoveExplanationActivity.EXTRA_PUNISH_MOVE, it.toAlgebraic()) }
+        if (explanation.followUpLine.isNotEmpty()) {
+            intent.putStringArrayListExtra(
+                MoveExplanationActivity.EXTRA_FOLLOW_UP,
+                ArrayList(explanation.followUpLine.map { it.toAlgebraic() })
+            )
+        }
         startActivity(intent)
     }
 

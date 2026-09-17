@@ -36,6 +36,11 @@ class MoveExplanationActivity : AppCompatActivity() {
     private var punishMove: Move? = null
     private var quality: MoveQuality? = null
 
+    /** The move(s) that reach the position [followUpMoves] continues from — see [anchorMovesFor]. */
+    private var anchorMoves: List<Move> = emptyList()
+    /** Best play for both sides for a few plies past [anchorMoves], so "why" isn't the same sentence every time. */
+    private var followUpMoves: List<Move> = emptyList()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_move_explanation)
@@ -71,12 +76,37 @@ class MoveExplanationActivity : AppCompatActivity() {
         val playedScore = intent.getIntExtra(EXTRA_PLAYED_SCORE, 0)
         val bestScore = intent.getIntExtra(EXTRA_BEST_SCORE, 0)
 
+        anchorMoves = anchorMovesFor(quality, played, bestMove, punishMove)
+        val anchorBoard = boardBefore.copy().apply { anchorMoves.forEach { applyMove(it) } }
+        val followUpNotations = intent.getStringArrayListExtra(EXTRA_FOLLOW_UP) ?: emptyList()
+        followUpMoves = resolveSequentialMoves(anchorBoard, followUpNotations)
+
         val (labelRes, colorRes) = qualityBadge(quality)
         titleText.text = getString(labelRes)
         (titleText.background as GradientDrawable).setColor(ContextCompat.getColor(this, colorRes))
 
         setupScenarios(quality)
-        bodyText.text = buildExplanation(boardBefore, quality, playedScore, bestScore)
+        bodyText.text = buildExplanation(boardBefore, anchorBoard, quality, playedScore, bestScore)
+    }
+
+    /** The move(s) that reach the position a "what happens next" continuation should start from. */
+    private fun anchorMovesFor(quality: MoveQuality, played: Move?, best: Move?, punish: Move?): List<Move> = when (quality) {
+        MoveQuality.BRILLIANT -> listOfNotNull(played)
+        MoveQuality.BLUNDER -> listOfNotNull(played, punish)
+        MoveQuality.MISSED_WIN -> listOfNotNull(best)
+        else -> emptyList()
+    }
+
+    /** Parses [notations] one at a time against [start], stopping at the first one that isn't legal there. */
+    private fun resolveSequentialMoves(start: Board, notations: List<String>): List<Move> {
+        val board = start.copy()
+        val moves = mutableListOf<Move>()
+        for (notation in notations) {
+            val move = parseAlgebraicMove(board, notation) ?: break
+            moves += move
+            board.applyMove(move)
+        }
+        return moves
     }
 
     /** Replays [replayMoves] from the start and returns the resulting board (the position the move was played from). */
@@ -118,6 +148,9 @@ class MoveExplanationActivity : AppCompatActivity() {
         }
         if (quality != MoveQuality.BRILLIANT && best != null) {
             scenarios += getString(R.string.explanation_scenario_best, best.toAlgebraic()) to listOf(best)
+        }
+        if (followUpMoves.isNotEmpty()) {
+            scenarios += getString(R.string.explanation_scenario_followup) to (anchorMoves + followUpMoves)
         }
 
         scenarioContainer.removeAllViews()
@@ -174,10 +207,10 @@ class MoveExplanationActivity : AppCompatActivity() {
         return "$sign${"%.1f".format(pawns)}"
     }
 
-    private fun buildExplanation(boardBefore: Board, quality: MoveQuality, playedScore: Int, bestScore: Int): String {
+    private fun buildExplanation(boardBefore: Board, anchorBoard: Board, quality: MoveQuality, playedScore: Int, bestScore: Int): String {
         val played = playedMove ?: return ""
         val best = bestMove
-        return when (quality) {
+        val body = when (quality) {
             MoveQuality.BLUNDER -> buildString {
                 append(getString(R.string.explain_blunder_played, describeMove(boardBefore, played), formatScore(playedScore)))
                 val punish = punishMove
@@ -200,6 +233,18 @@ class MoveExplanationActivity : AppCompatActivity() {
             }
             else -> ""
         }
+        if (followUpMoves.isEmpty()) return body
+        return "$body\n\n${getString(R.string.explain_followup, describeSequence(anchorBoard, followUpMoves))}"
+    }
+
+    /** Walks [moves] from [start], describing each one against the board state at that point in the sequence. */
+    private fun describeSequence(start: Board, moves: List<Move>): String {
+        val board = start.copy()
+        return moves.joinToString(" → ") { move ->
+            val description = describeMove(board, move)
+            board.applyMove(move)
+            description
+        }
     }
 
     companion object {
@@ -211,5 +256,6 @@ class MoveExplanationActivity : AppCompatActivity() {
         const val EXTRA_BEST_MOVE = "chess.ui.EXTRA_BEST_MOVE"
         const val EXTRA_BEST_SCORE = "chess.ui.EXTRA_BEST_SCORE"
         const val EXTRA_PUNISH_MOVE = "chess.ui.EXTRA_PUNISH_MOVE"
+        const val EXTRA_FOLLOW_UP = "chess.ui.EXTRA_FOLLOW_UP"
     }
 }
