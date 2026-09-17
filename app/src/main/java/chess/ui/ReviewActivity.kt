@@ -1,12 +1,17 @@
 package chess.ui
 
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.View
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import chess.ai.AiLevel
 import chess.ai.ChessAi
+import chess.ai.MoveClassifier
+import chess.ai.MoveQuality
 import chess.history.GameRecord
 import chess.history.GameRecordCodec
 import chess.parseAlgebraicMove
@@ -25,6 +30,7 @@ class ReviewActivity : AppCompatActivity() {
     private lateinit var boardView: ChessBoardView
     private lateinit var moveCounterText: TextView
     private lateinit var actualMoveText: TextView
+    private lateinit var moveQualityText: TextView
     private lateinit var aiSuggestionText: TextView
     private lateinit var prevButton: MaterialButton
     private lateinit var nextButton: MaterialButton
@@ -50,6 +56,7 @@ class ReviewActivity : AppCompatActivity() {
         boardView = findViewById(R.id.reviewBoardView)
         moveCounterText = findViewById(R.id.moveCounterText)
         actualMoveText = findViewById(R.id.actualMoveText)
+        moveQualityText = findViewById(R.id.moveQualityText)
         aiSuggestionText = findViewById(R.id.aiSuggestionText)
         prevButton = findViewById(R.id.prevButton)
         nextButton = findViewById(R.id.nextButton)
@@ -103,25 +110,57 @@ class ReviewActivity : AppCompatActivity() {
         requestAiSuggestion()
     }
 
+    /**
+     * Scores every legal move from the current position once, then uses that same pass both to
+     * show the engine's suggested move and to grade the move actually played (chess.com "Game
+     * Review" style: Brilliant/Great/Best/.../Blunder/Missed Win) — one engine call per position.
+     */
     private fun requestAiSuggestion() {
         val requestId = ++suggestionRequestId
         if (currentIndex >= record.moves.size) {
             aiSuggestionText.text = ""
+            moveQualityText.visibility = View.GONE
             return
         }
         aiSuggestionText.text = getString(R.string.ai_thinking)
+        moveQualityText.visibility = View.GONE
         val snapshot = boardView.game.board.copy()
+        val playedMove = parseAlgebraicMove(snapshot, record.moves[currentIndex])
         analysisExecutor.execute {
-            val suggestion = runCatching { ChessAi(AiLevel.MASTER).chooseMove(snapshot) }.getOrNull()
+            val evaluations = runCatching { ChessAi(AiLevel.MASTER).evaluateAllMoves(snapshot) }.getOrDefault(emptyList())
+            val best = evaluations.firstOrNull()?.move
+            val quality = playedMove?.let { MoveClassifier.classify(snapshot, it, evaluations) }
             mainHandler.post {
                 if (requestId != suggestionRequestId || isFinishing || isDestroyed) return@post
-                aiSuggestionText.text = if (suggestion != null) {
-                    getString(R.string.review_ai_suggestion, suggestion.toAlgebraic())
+                aiSuggestionText.text = if (best != null) {
+                    getString(R.string.review_ai_suggestion, best.toAlgebraic())
                 } else {
                     getString(R.string.review_ai_suggestion_none)
                 }
+                showMoveQuality(quality)
             }
         }
+    }
+
+    private fun showMoveQuality(quality: MoveQuality?) {
+        if (quality == null) {
+            moveQualityText.visibility = View.GONE
+            return
+        }
+        val (labelRes, colorRes) = when (quality) {
+            MoveQuality.BRILLIANT -> R.string.move_quality_brilliant to R.color.move_quality_brilliant
+            MoveQuality.GREAT -> R.string.move_quality_great to R.color.move_quality_great
+            MoveQuality.BEST -> R.string.move_quality_best to R.color.move_quality_best
+            MoveQuality.EXCELLENT -> R.string.move_quality_excellent to R.color.move_quality_excellent
+            MoveQuality.GOOD -> R.string.move_quality_good to R.color.move_quality_good
+            MoveQuality.INACCURACY -> R.string.move_quality_inaccuracy to R.color.move_quality_inaccuracy
+            MoveQuality.MISTAKE -> R.string.move_quality_mistake to R.color.move_quality_mistake
+            MoveQuality.BLUNDER -> R.string.move_quality_blunder to R.color.move_quality_blunder
+            MoveQuality.MISSED_WIN -> R.string.move_quality_missed_win to R.color.move_quality_missed_win
+        }
+        moveQualityText.text = getString(labelRes)
+        (moveQualityText.background as GradientDrawable).setColor(ContextCompat.getColor(this, colorRes))
+        moveQualityText.visibility = View.VISIBLE
     }
 
     companion object {

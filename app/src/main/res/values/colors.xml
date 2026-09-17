@@ -27,6 +27,17 @@
     <color name="text_primary">#FFFFFF</color>
     <color name="text_secondary">#B8B6B4</color>
 
+    <!-- Move quality badges (game review) -->
+    <color name="move_quality_brilliant">#1BACA6</color>
+    <color name="move_quality_great">#5C8BB0</color>
+    <color name="move_quality_best">#81B64C</color>
+    <color name="move_quality_excellent">#96BC4B</color>
+    <color name="move_quality_good">#A3A3A1</color>
+    <color name="move_quality_inaccuracy">#F0C239</color>
+    <color name="move_quality_mistake">#FFA459</color>
+    <color name="move_quality_blunder">#FA4133</color>
+    <color name="move_quality_missed_win">#B23B3B</color>
+
     <!-- Launcher icon -->
     <color name="ic_launcher_background">#769656</color>
 </resources>

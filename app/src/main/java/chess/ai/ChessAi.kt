@@ -12,6 +12,9 @@ import kotlin.random.Random
  */
 class ChessAi(private val level: AiLevel, private val random: Random = Random.Default) {
 
+    /** A candidate root move together with its search score, from the mover's point of view. */
+    data class MoveEvaluation(val move: Move, val score: Int)
+
     /**
      * Nodes visited in the current [chooseMove] call. Checked alongside the wall-clock deadline
      * so the worst case is bounded even on a device far slower than expected — time alone isn't
@@ -29,9 +32,23 @@ class ChessAi(private val level: AiLevel, private val random: Random = Random.De
             return legalMoves[random.nextInt(legalMoves.size)]
         }
 
+        val scored = evaluateAllMoves(board)
+        val poolSize = level.randomPoolSize.coerceIn(1, scored.size)
+        return scored.subList(0, poolSize)[random.nextInt(poolSize)].move
+    }
+
+    /**
+     * Scores every legal move for the side to move on [board], best first. Used by [chooseMove]
+     * and by post-game analysis (e.g. classifying how good a played move was against what the
+     * engine itself would have played from the same position).
+     */
+    fun evaluateAllMoves(board: Board): List<MoveEvaluation> {
+        val legalMoves = MoveGenerator.legalMoves(board, board.sideToMove)
+        if (legalMoves.isEmpty()) return emptyList()
+
         nodesVisited = 0
         val deadline = System.nanoTime() + TIME_BUDGET_NANOS
-        val scored = orderedMoves(board, legalMoves).map { move ->
+        return orderedMoves(board, legalMoves).map { move ->
             val copy = board.copy()
             copy.applyMove(move)
             // Once the budget is spent, stop recursing altogether and fall back to a cheap static
@@ -41,11 +58,8 @@ class ChessAi(private val level: AiLevel, private val random: Random = Random.De
             } else {
                 -search(copy, level.depth - 1, 1, -INFINITY, INFINITY, deadline)
             }
-            move to score
-        }.sortedByDescending { it.second }
-
-        val poolSize = level.randomPoolSize.coerceIn(1, scored.size)
-        return scored.subList(0, poolSize)[random.nextInt(poolSize)].first
+            MoveEvaluation(move, score)
+        }.sortedByDescending { it.score }
     }
 
     /** True once either budget is spent. Always call at most once per node — it also counts the node. */

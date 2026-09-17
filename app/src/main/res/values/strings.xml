@@ -54,4 +54,15 @@
     <string name="review_ai_suggestion_none">AI 추천 없음</string>
     <string name="review_prev">이전</string>
     <string name="review_next">다음</string>
+    <string name="review_analyzing">분석 중…</string>
+
+    <string name="move_quality_brilliant">탁월한 수!!</string>
+    <string name="move_quality_great">훌륭한 수!</string>
+    <string name="move_quality_best">최선의 수</string>
+    <string name="move_quality_excellent">뛰어난 수</string>
+    <string name="move_quality_good">좋은 수</string>
+    <string name="move_quality_inaccuracy">부정확한 수</string>
+    <string name="move_quality_mistake">실수</string>
+    <string name="move_quality_blunder">심각한 실수</string>
+    <string name="move_quality_missed_win">놓친 승리 기회</string>
 </resources>
