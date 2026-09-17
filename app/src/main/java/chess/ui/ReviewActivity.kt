@@ -35,6 +35,7 @@ import java.util.concurrent.Executors
 class ReviewActivity : AppCompatActivity() {
 
     private lateinit var boardView: ChessBoardView
+    private lateinit var evalBarView: EvalBarView
     private lateinit var moveCounterText: TextView
     private lateinit var actualMoveText: TextView
     private lateinit var moveQualityText: TextView
@@ -70,6 +71,8 @@ class ReviewActivity : AppCompatActivity() {
         // Show the board from the human's own side, matching how the game was actually played
         // (a two-player game has no single human side, so it's left at the default orientation).
         boardView.flipped = record.humanColor == Color.BLACK
+        evalBarView = findViewById(R.id.evalBarView)
+        evalBarView.flipped = boardView.flipped
         moveCounterText = findViewById(R.id.moveCounterText)
         actualMoveText = findViewById(R.id.actualMoveText)
         moveQualityText = findViewById(R.id.moveQualityText)
@@ -152,6 +155,7 @@ class ReviewActivity : AppCompatActivity() {
         if (lastMoveIndex < 0 || snapshot == null) {
             aiSuggestionText.text = ""
             showMoveQuality(null, null, emptyList())
+            evalBarView.scoreForWhite = 0
             return
         }
         aiSuggestionText.text = getString(R.string.ai_thinking)
@@ -159,6 +163,7 @@ class ReviewActivity : AppCompatActivity() {
         val playedMove = parseAlgebraicMove(snapshot, record.moves[lastMoveIndex])
         val isBookMove = OpeningBook.isBookMove(record.moves.subList(0, lastMoveIndex + 1))
         val replayMoves = record.moves.subList(0, lastMoveIndex)
+        val moverColor = snapshot.sideToMove
         analysisExecutor.execute {
             val evaluations = runCatching { ChessAi(AiLevel.MASTER).evaluateAllMoves(snapshot) }.getOrDefault(emptyList())
             val best = evaluations.firstOrNull()
@@ -168,8 +173,15 @@ class ReviewActivity : AppCompatActivity() {
                 else -> null
             }
             val explanation = buildExplanation(quality, playedMove, snapshot, evaluations, best)
+            // The eval bar reflects the position AFTER the graded move (what's currently on
+            // screen), not the pre-move snapshot: evaluations already score each candidate move by
+            // the resulting position, from the mover's own point of view, so it just needs flipping
+            // to White's point of view when the mover was Black.
+            val playedScore = evaluations.find { it.move == playedMove }?.score
+            val scoreForWhite = playedScore?.let { if (moverColor == Color.WHITE) it else -it } ?: 0
             mainHandler.post {
                 if (requestId != suggestionRequestId || isFinishing || isDestroyed) return@post
+                evalBarView.scoreForWhite = scoreForWhite
                 if (best != null && ChessAi.isForcedMateScore(best.score)) {
                     showMateSuggestion(best.move.toAlgebraic(), replayMoves)
                 } else {
