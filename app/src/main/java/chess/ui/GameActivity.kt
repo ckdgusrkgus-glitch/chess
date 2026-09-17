@@ -39,8 +39,17 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
     private var aiExecutor: ExecutorService? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    /** Generation of the AI request still awaiting resolution, or null if none is outstanding. */
-    private var pendingAiGeneration: Int? = null
+    /**
+     * Identifies a single [requestAiMove] call, distinct from [ChessBoardView.currentGeneration]
+     * (which only changes on [ChessBoardView.newGame] and so is identical across every AI turn in
+     * one game). Without a per-request id, a watchdog whose real result already arrived in time
+     * has no way to tell it's stale once it *does* fire late — it would find the shared game
+     * generation still matching whatever the current request happens to be and apply its own
+     * long-outdated fallback move onto a board that has since moved on several turns.
+     */
+    private var aiRequestSeq = 0
+    private var pendingAiRequestId: Int? = null
+    private var pendingAiWatchdog: Runnable? = null
 
     private val moveHistory = mutableListOf<String>()
     private val historyStore by lazy { GameHistoryStore(this) }
@@ -183,22 +192,25 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
         statusText.text = getString(R.string.ai_thinking)
 
         val snapshot = boardView.game.board.copy()
-        val generation = boardView.currentGeneration
-        pendingAiGeneration = generation
+        val boardGeneration = boardView.currentGeneration
+        val requestId = ++aiRequestSeq
+        pendingAiRequestId = requestId
         val startedAt = System.currentTimeMillis()
-        Log.i(TAG, "AI move requested (generation=$generation)")
+        Log.i(TAG, "AI move requested (requestId=$requestId, generation=$boardGeneration)")
 
         // Belt-and-suspenders: if the search hangs or misbehaves for any reason on a given device,
         // this guarantees the game recovers on its own instead of getting stuck forever. Replacing
         // the executor (rather than reusing it) matters just as much as the fallback move itself:
         // a search that's still stuck when this fires would otherwise permanently occupy the single
         // background thread, silently timing out every AI turn for the rest of the game.
-        mainHandler.postDelayed({
-            Log.w(TAG, "AI move watchdog fired after ${System.currentTimeMillis() - startedAt}ms (generation=$generation)")
+        val watchdog = Runnable {
+            Log.w(TAG, "AI move watchdog fired after ${System.currentTimeMillis() - startedAt}ms (requestId=$requestId)")
             aiExecutor?.shutdownNow()
             aiExecutor = Executors.newSingleThreadExecutor()
-            resolveAiMove(generation, randomFallbackMove(snapshot))
-        }, AI_WATCHDOG_TIMEOUT_MS)
+            resolveAiMove(requestId, boardGeneration, randomFallbackMove(snapshot))
+        }
+        pendingAiWatchdog = watchdog
+        mainHandler.postDelayed(watchdog, AI_WATCHDOG_TIMEOUT_MS)
 
         executor.execute {
             val computed = try {
@@ -209,24 +221,31 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
             }
             val move = computed ?: randomFallbackMove(snapshot)
             val elapsed = System.currentTimeMillis() - startedAt
-            Log.i(TAG, "AI move computed in ${elapsed}ms (generation=$generation): $move")
-            mainHandler.post { resolveAiMove(generation, move) }
+            Log.i(TAG, "AI move computed in ${elapsed}ms (requestId=$requestId): $move")
+            mainHandler.post { resolveAiMove(requestId, boardGeneration, move) }
         }
     }
 
     private fun randomFallbackMove(board: Board): Move? =
         MoveGenerator.legalMoves(board, board.sideToMove).randomOrNull()
 
-    /** Applies the AI's move, but only for whichever caller (the real result or the watchdog) gets here first. */
-    private fun resolveAiMove(generation: Int, move: Move?) {
-        if (pendingAiGeneration != generation) {
-            Log.i(TAG, "Ignoring superseded AI result for generation=$generation")
+    /**
+     * Applies the AI's move, but only for whichever caller (the real result or the watchdog) gets
+     * here first for THIS specific [requestId] — not just this game (see [pendingAiRequestId]).
+     */
+    private fun resolveAiMove(requestId: Int, boardGeneration: Int, move: Move?) {
+        if (pendingAiRequestId != requestId) {
+            Log.i(TAG, "Ignoring superseded AI result for requestId=$requestId")
             return
         }
-        pendingAiGeneration = null
+        pendingAiRequestId = null
+        // The real result winning the race still leaves the watchdog timer scheduled; cancel it so
+        // it can't fire later with a now long-outdated fallback move.
+        pendingAiWatchdog?.let { mainHandler.removeCallbacks(it) }
+        pendingAiWatchdog = null
         if (isFinishing || isDestroyed) return
         boardView.inputEnabled = true
-        if (move != null) boardView.applyExternalMove(move, generation)
+        if (move != null) boardView.applyExternalMove(move, boardGeneration)
     }
 
     override fun onPromotionNeeded(from: Square, to: Square, onChosen: (PieceType) -> Unit) {
