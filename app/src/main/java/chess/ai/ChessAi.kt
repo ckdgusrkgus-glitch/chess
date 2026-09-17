@@ -154,8 +154,8 @@ class ChessAi(private val level: AiLevel, private val random: Random = Random.De
     companion object {
         private const val INFINITY = 1_000_000
         private const val MATE_SCORE = 100_000
-        private const val TIME_BUDGET_NANOS = 1_500_000_000L
-        private const val MAX_NODES = 20_000
+        private const val TIME_BUDGET_NANOS = 1_000_000_000L
+        private const val MAX_NODES = 15_000
         private const val MAX_QUIESCENCE_DEPTH = 4
 
         /**

@@ -35,7 +35,6 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
     /** Which color the AI controls this game; the other color is the human's. Randomized per game. */
     private var aiColor: Color = Color.BLACK
     private var currentAiLevel: AiLevel? = null
-    private var chessAi: ChessAi? = null
 
     private var aiExecutor: ExecutorService? = null
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -61,7 +60,6 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
         currentAiLevel = level
         if (level != null) {
             randomizeAiSide()
-            chessAi = ChessAi(level)
             aiExecutor = Executors.newSingleThreadExecutor()
         }
         updateSideLabels()
@@ -168,7 +166,7 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
         if (moveHistory.isEmpty()) return
         val record = GameRecord(
             timestampMillis = System.currentTimeMillis(),
-            humanColor = if (chessAi != null) aiColor.opposite() else null,
+            humanColor = if (currentAiLevel != null) aiColor.opposite() else null,
             opponentLabel = currentAiLevel?.let { getString(R.string.ai_level_option, it.label, it.rating) }
                 ?: getString(R.string.two_player),
             result = resultText,
@@ -178,7 +176,7 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
     }
 
     private fun requestAiMove() {
-        val ai = chessAi ?: return
+        val level = currentAiLevel ?: return
         val executor = aiExecutor ?: return
 
         boardView.inputEnabled = false
@@ -191,15 +189,20 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
         Log.i(TAG, "AI move requested (generation=$generation)")
 
         // Belt-and-suspenders: if the search hangs or misbehaves for any reason on a given device,
-        // this guarantees the game recovers on its own instead of getting stuck forever.
+        // this guarantees the game recovers on its own instead of getting stuck forever. Replacing
+        // the executor (rather than reusing it) matters just as much as the fallback move itself:
+        // a search that's still stuck when this fires would otherwise permanently occupy the single
+        // background thread, silently timing out every AI turn for the rest of the game.
         mainHandler.postDelayed({
             Log.w(TAG, "AI move watchdog fired after ${System.currentTimeMillis() - startedAt}ms (generation=$generation)")
+            aiExecutor?.shutdownNow()
+            aiExecutor = Executors.newSingleThreadExecutor()
             resolveAiMove(generation, randomFallbackMove(snapshot))
         }, AI_WATCHDOG_TIMEOUT_MS)
 
         executor.execute {
             val computed = try {
-                ai.chooseMove(snapshot)
+                ChessAi(level).chooseMove(snapshot)
             } catch (t: Throwable) {
                 Log.e(TAG, "AI move computation failed", t)
                 null
