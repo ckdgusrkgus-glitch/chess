@@ -61,6 +61,7 @@
     <string name="move_quality_best">최선의 수</string>
     <string name="move_quality_excellent">뛰어난 수</string>
     <string name="move_quality_good">좋은 수</string>
+    <string name="move_quality_book">교과서적인 수</string>
     <string name="move_quality_inaccuracy">부정확한 수</string>
     <string name="move_quality_mistake">실수</string>
     <string name="move_quality_blunder">심각한 실수</string>

@@ -7,6 +7,7 @@ enum class MoveQuality {
     BEST,
     EXCELLENT,
     GOOD,
+    BOOK,
     INACCURACY,
     MISTAKE,
     BLUNDER,

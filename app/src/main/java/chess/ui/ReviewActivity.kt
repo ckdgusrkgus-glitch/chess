@@ -12,6 +12,7 @@ import chess.ai.AiLevel
 import chess.ai.ChessAi
 import chess.ai.MoveClassifier
 import chess.ai.MoveQuality
+import chess.ai.OpeningBook
 import chess.history.GameRecord
 import chess.history.GameRecordCodec
 import chess.parseAlgebraicMove
@@ -126,10 +127,15 @@ class ReviewActivity : AppCompatActivity() {
         moveQualityText.visibility = View.GONE
         val snapshot = boardView.game.board.copy()
         val playedMove = parseAlgebraicMove(snapshot, record.moves[currentIndex])
+        val isBookMove = OpeningBook.isBookMove(record.moves.subList(0, currentIndex + 1))
         analysisExecutor.execute {
             val evaluations = runCatching { ChessAi(AiLevel.MASTER).evaluateAllMoves(snapshot) }.getOrDefault(emptyList())
             val best = evaluations.firstOrNull()?.move
-            val quality = playedMove?.let { MoveClassifier.classify(snapshot, it, evaluations) }
+            val quality = when {
+                isBookMove -> MoveQuality.BOOK
+                playedMove != null -> MoveClassifier.classify(snapshot, playedMove, evaluations)
+                else -> null
+            }
             mainHandler.post {
                 if (requestId != suggestionRequestId || isFinishing || isDestroyed) return@post
                 aiSuggestionText.text = if (best != null) {
@@ -153,6 +159,7 @@ class ReviewActivity : AppCompatActivity() {
             MoveQuality.BEST -> R.string.move_quality_best to R.color.move_quality_best
             MoveQuality.EXCELLENT -> R.string.move_quality_excellent to R.color.move_quality_excellent
             MoveQuality.GOOD -> R.string.move_quality_good to R.color.move_quality_good
+            MoveQuality.BOOK -> R.string.move_quality_book to R.color.move_quality_book
             MoveQuality.INACCURACY -> R.string.move_quality_inaccuracy to R.color.move_quality_inaccuracy
             MoveQuality.MISTAKE -> R.string.move_quality_mistake to R.color.move_quality_mistake
             MoveQuality.BLUNDER -> R.string.move_quality_blunder to R.color.move_quality_blunder
