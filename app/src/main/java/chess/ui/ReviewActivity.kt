@@ -10,6 +10,7 @@ import android.view.View
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import chess.Color
 import chess.ai.AiLevel
 import chess.ai.ChessAi
 import chess.ai.MoveClassifier
@@ -60,6 +61,9 @@ class ReviewActivity : AppCompatActivity() {
         record = decoded
 
         boardView = findViewById(R.id.reviewBoardView)
+        // Show the board from the human's own side, matching how the game was actually played
+        // (a two-player game has no single human side, so it's left at the default orientation).
+        boardView.flipped = record.humanColor == Color.BLACK
         moveCounterText = findViewById(R.id.moveCounterText)
         actualMoveText = findViewById(R.id.actualMoveText)
         moveQualityText = findViewById(R.id.moveQualityText)
@@ -166,6 +170,7 @@ class ReviewActivity : AppCompatActivity() {
         aiSuggestionText.setOnClickListener {
             val intent = Intent(this, MateLineActivity::class.java)
             intent.putStringArrayListExtra(MateLineActivity.EXTRA_REPLAY_MOVES, ArrayList(replayMoves))
+            intent.putExtra(MateLineActivity.EXTRA_FLIPPED, boardView.flipped)
             startActivity(intent)
         }
     }

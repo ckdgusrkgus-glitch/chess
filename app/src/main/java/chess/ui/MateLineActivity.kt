@@ -58,6 +58,7 @@ class MateLineActivity : AppCompatActivity() {
         replayMoves = intent.getStringArrayListExtra(EXTRA_REPLAY_MOVES) ?: emptyList()
 
         boardView = findViewById(R.id.mateBoardView)
+        boardView.flipped = intent.getBooleanExtra(EXTRA_FLIPPED, false)
         counterText = findViewById(R.id.mateCounterText)
         moveText = findViewById(R.id.mateMoveText)
         prevButton = findViewById(R.id.matePrevButton)
@@ -174,6 +175,7 @@ class MateLineActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_REPLAY_MOVES = "chess.ui.EXTRA_REPLAY_MOVES"
+        const val EXTRA_FLIPPED = "chess.ui.EXTRA_FLIPPED"
         private const val PLAYBACK_DELAY_MS = 900L
     }
 }
