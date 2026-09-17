@@ -84,6 +84,7 @@
     <string name="explanation_scenario_played_and_punish">둔 수 + 상대 응수: %1$s</string>
     <string name="explanation_scenario_best">최선의 수: %1$s</string>
     <string name="explanation_scenario_followup">예상 진행 보기</string>
+    <string name="explanation_step_progress">%1$d / %2$d수 · %3$s</string>
 
     <string name="explain_leads_to_mate">체크메이트로 이어짐</string>
     <string name="explain_blunder_played">둔 수: %1$s (평가 %2$s)</string>

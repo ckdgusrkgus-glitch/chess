@@ -29,6 +29,9 @@ class MoveExplanationActivity : AppCompatActivity() {
     private lateinit var titleText: TextView
     private lateinit var bodyText: TextView
     private lateinit var scenarioContainer: LinearLayout
+    private lateinit var stepText: TextView
+    private lateinit var stepPrevButton: MaterialButton
+    private lateinit var stepNextButton: MaterialButton
 
     private var replayMoves: List<String> = emptyList()
     private var playedMove: Move? = null
@@ -41,6 +44,13 @@ class MoveExplanationActivity : AppCompatActivity() {
     /** Best play for both sides for a few plies past [anchorMoves], so "why" isn't the same sentence every time. */
     private var followUpMoves: List<Move> = emptyList()
 
+    /** The position the currently selected scenario starts from (after replaying [replayMoves]). */
+    private lateinit var startBoard: Board
+    /** The moves of the currently selected scenario button, steppable one at a time via [stepPrevButton]/[stepNextButton]. */
+    private var currentScenarioMoves: List<Move> = emptyList()
+    /** How many of [currentScenarioMoves] are currently applied to the board (0 = start position). */
+    private var scenarioStepIndex = 0
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_move_explanation)
@@ -49,7 +59,23 @@ class MoveExplanationActivity : AppCompatActivity() {
         titleText = findViewById(R.id.explanationTitleText)
         bodyText = findViewById(R.id.explanationBodyText)
         scenarioContainer = findViewById(R.id.scenarioButtonContainer)
+        stepText = findViewById(R.id.explanationStepText)
+        stepPrevButton = findViewById(R.id.explanationStepPrevButton)
+        stepNextButton = findViewById(R.id.explanationStepNextButton)
         findViewById<MaterialButton>(R.id.explanationBackButton).setOnClickListener { finish() }
+
+        stepPrevButton.setOnClickListener {
+            if (scenarioStepIndex > 0) {
+                scenarioStepIndex--
+                renderScenarioStep()
+            }
+        }
+        stepNextButton.setOnClickListener {
+            if (scenarioStepIndex < currentScenarioMoves.size) {
+                scenarioStepIndex++
+                renderScenarioStep()
+            }
+        }
 
         val quality = intent.getStringExtra(EXTRA_QUALITY)?.let { runCatching { MoveQuality.valueOf(it) }.getOrNull() }
         if (quality == null) {
@@ -62,14 +88,14 @@ class MoveExplanationActivity : AppCompatActivity() {
         boardView.flipped = intent.getBooleanExtra(EXTRA_FLIPPED, false)
         boardView.inputEnabled = false
 
-        val boardBefore = replayToBoardBefore()
-        playedMove = intent.getStringExtra(EXTRA_PLAYED_MOVE)?.let { parseAlgebraicMove(boardBefore, it) }
-        bestMove = intent.getStringExtra(EXTRA_BEST_MOVE)?.let { parseAlgebraicMove(boardBefore, it) }
+        startBoard = replayToBoardBefore()
+        playedMove = intent.getStringExtra(EXTRA_PLAYED_MOVE)?.let { parseAlgebraicMove(startBoard, it) }
+        bestMove = intent.getStringExtra(EXTRA_BEST_MOVE)?.let { parseAlgebraicMove(startBoard, it) }
 
         val played = playedMove
         val punishNotation = intent.getStringExtra(EXTRA_PUNISH_MOVE)
         punishMove = if (punishNotation != null && played != null) {
-            val afterPlayed = boardBefore.copy().apply { applyMove(played) }
+            val afterPlayed = startBoard.copy().apply { applyMove(played) }
             parseAlgebraicMove(afterPlayed, punishNotation)
         } else null
 
@@ -77,7 +103,7 @@ class MoveExplanationActivity : AppCompatActivity() {
         val bestScore = intent.getIntExtra(EXTRA_BEST_SCORE, 0)
 
         anchorMoves = anchorMovesFor(quality, played, bestMove, punishMove)
-        val anchorBoard = boardBefore.copy().apply { anchorMoves.forEach { applyMove(it) } }
+        val anchorBoard = startBoard.copy().apply { anchorMoves.forEach { applyMove(it) } }
         val followUpNotations = intent.getStringArrayListExtra(EXTRA_FOLLOW_UP) ?: emptyList()
         followUpMoves = resolveSequentialMoves(anchorBoard, followUpNotations)
 
@@ -86,7 +112,7 @@ class MoveExplanationActivity : AppCompatActivity() {
         (titleText.background as GradientDrawable).setColor(ContextCompat.getColor(this, colorRes))
 
         setupScenarios(quality)
-        bodyText.text = buildExplanation(boardBefore, anchorBoard, quality, playedScore, bestScore)
+        bodyText.text = buildExplanation(startBoard, anchorBoard, quality, playedScore, bestScore)
     }
 
     /** The move(s) that reach the position a "what happens next" continuation should start from. */
@@ -120,17 +146,28 @@ class MoveExplanationActivity : AppCompatActivity() {
         return boardView.game.board.copy()
     }
 
-    /** Resets the board to [replayMoves] and applies [extra] on top, to show one concrete scenario. */
-    private fun showScenario(extra: List<Move>) {
+    /** Resets the board to [replayMoves] and applies the first [scenarioStepIndex] moves of [currentScenarioMoves] on top, so the scenario can be watched move by move via [stepPrevButton]/[stepNextButton]. */
+    private fun renderScenarioStep() {
         boardView.newGame()
         val generation = boardView.currentGeneration
         for (notation in replayMoves) {
             val move = parseAlgebraicMove(boardView.game.board, notation) ?: break
             boardView.applyExternalMove(move, generation)
         }
-        for (move in extra) {
-            boardView.applyExternalMove(move, generation)
+        for (i in 0 until scenarioStepIndex) {
+            boardView.applyExternalMove(currentScenarioMoves[i], generation)
         }
+
+        val moveDescription = if (scenarioStepIndex == 0) {
+            getString(R.string.review_start_position)
+        } else {
+            val board = startBoard.copy()
+            for (i in 0 until scenarioStepIndex - 1) board.applyMove(currentScenarioMoves[i])
+            describeMove(board, currentScenarioMoves[scenarioStepIndex - 1])
+        }
+        stepText.text = getString(R.string.explanation_step_progress, scenarioStepIndex, currentScenarioMoves.size, moveDescription)
+        stepPrevButton.isEnabled = scenarioStepIndex > 0
+        stepNextButton.isEnabled = scenarioStepIndex < currentScenarioMoves.size
     }
 
     private fun setupScenarios(quality: MoveQuality) {
@@ -162,7 +199,9 @@ class MoveExplanationActivity : AppCompatActivity() {
                 isAllCaps = false
             }
             button.setOnClickListener {
-                showScenario(moves)
+                currentScenarioMoves = moves
+                scenarioStepIndex = 0
+                renderScenarioStep()
                 buttons.forEachIndexed { i, b -> styleScenarioButton(b, i == index) }
             }
             val params = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
