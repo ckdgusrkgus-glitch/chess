@@ -13,11 +13,10 @@ import androidx.core.content.ContextCompat
 import chess.Board
 import chess.Color
 import chess.Move
-import chess.MoveGenerator
 import chess.ai.AiLevel
 import chess.ai.ChessAi
+import chess.ai.EXPLAINABLE_MOVE_QUALITIES
 import chess.ai.MoveClassifier
-import chess.ai.MoveExplanation
 import chess.ai.MoveQuality
 import chess.ai.OpeningBook
 import chess.history.GameRecord
@@ -155,7 +154,7 @@ class ReviewActivity : AppCompatActivity() {
         val snapshot = boardBeforeLastMove
         if (lastMoveIndex < 0 || snapshot == null) {
             aiSuggestionText.text = ""
-            showMoveQuality(null, null, emptyList())
+            showMoveQuality(null, null, 0, null, emptyList())
             evalBarView.scoreForWhite = 0
             return
         }
@@ -173,7 +172,6 @@ class ReviewActivity : AppCompatActivity() {
                 playedMove != null -> MoveClassifier.classify(snapshot, playedMove, evaluations)
                 else -> null
             }
-            val explanation = buildExplanation(quality, playedMove, snapshot, evaluations, best)
             // The eval bar reflects the position AFTER the graded move (what's currently on
             // screen), not the pre-move snapshot: evaluations already score each candidate move by
             // the resulting position, from the mover's own point of view, so it just needs flipping
@@ -192,70 +190,9 @@ class ReviewActivity : AppCompatActivity() {
                         getString(R.string.review_ai_suggestion_none)
                     }
                 }
-                showMoveQuality(quality, explanation, replayMoves)
+                showMoveQuality(quality, playedMove, playedScore ?: 0, best, replayMoves)
             }
         }
-    }
-
-    /**
-     * Only for Blunder/Brilliant/Missed Win (see [MoveExplanation.EXPLAINABLE]): gathers the facts
-     * a "why" screen needs. For a blunder specifically, this pays for one more engine search (from
-     * the position right after the played move) to find the reply that actually punishes it, and
-     * for all three, another few plies of best play past whichever move matters for that verdict
-     * ([MoveExplanation.followUpLine]) — without it, the explanation text is the same boilerplate
-     * sentence every time regardless of what the position actually holds.
-     */
-    private fun buildExplanation(
-        quality: MoveQuality?,
-        playedMove: Move?,
-        boardBefore: Board,
-        evaluations: List<ChessAi.MoveEvaluation>,
-        best: ChessAi.MoveEvaluation?
-    ): MoveExplanation? {
-        if (quality == null || quality !in MoveExplanation.EXPLAINABLE || playedMove == null || best == null) return null
-        val playedScore = evaluations.find { it.move == playedMove }?.score ?: 0
-        val ai = ChessAi(AiLevel.MASTER)
-
-        val punishingReply = if (quality == MoveQuality.BLUNDER) {
-            val afterPlayed = boardBefore.copy().apply { applyMove(playedMove) }
-            runCatching { ai.evaluateAllMoves(afterPlayed).firstOrNull() }.getOrNull()
-        } else null
-
-        // The position the follow-up line should be judged from: right after the sacrifice for
-        // Brilliant, after the opponent's punishing reply for Blunder, after the missed best move
-        // for Missed Win — i.e. wherever the "so what happens next" question is actually about.
-        val anchor = runCatching {
-            when (quality) {
-                MoveQuality.BRILLIANT -> boardBefore.copy().apply { applyMove(playedMove) }
-                MoveQuality.BLUNDER -> boardBefore.copy().apply {
-                    applyMove(playedMove)
-                    punishingReply?.let { applyMove(it.move) }
-                }
-                MoveQuality.MISSED_WIN -> boardBefore.copy().apply { applyMove(best.move) }
-                else -> null
-            }
-        }.getOrNull()
-        // A missed forced mate ("놓친 메이트") is walked all the way to checkmate rather than cut
-        // off at a fixed depth, so the "why" screen can replay the actual mating sequence.
-        val isMissedMate = quality == MoveQuality.MISSED_WIN && ChessAi.isForcedMateScore(best.score)
-        val followUpMaxPlies = if (isMissedMate) MISSED_MATE_MAX_PLIES else GENERIC_FOLLOW_UP_MAX_PLIES
-        val followUpLine = anchor?.let { runCatching { ai.findMateLine(it, maxPlies = followUpMaxPlies) }.getOrDefault(emptyList()) }.orEmpty()
-        val followUpIsMate = isMissedMate && followUpLine.isNotEmpty() && runCatching {
-            val after = anchor!!.copy().apply { followUpLine.forEach { applyMove(it) } }
-            after.isInCheck(after.sideToMove) && MoveGenerator.legalMoves(after, after.sideToMove).isEmpty()
-        }.getOrDefault(false)
-
-        return MoveExplanation(
-            quality = quality,
-            playedMove = playedMove,
-            playedScore = playedScore,
-            bestMove = best.move,
-            bestScore = best.score,
-            punishingReply = punishingReply?.move,
-            punishingReplyScore = punishingReply?.score,
-            followUpLine = followUpLine,
-            followUpIsMate = followUpIsMate
-        )
     }
 
     private fun showMateSuggestion(bestMoveNotation: String, replayMoves: List<String>) {
@@ -277,7 +214,20 @@ class ReviewActivity : AppCompatActivity() {
         aiSuggestionText.isClickable = false
     }
 
-    private fun showMoveQuality(quality: MoveQuality?, explanation: MoveExplanation?, replayMoves: List<String>) {
+    /**
+     * Shows the grade badge. Blunder/Brilliant/Missed Win (see [EXPLAINABLE_MOVE_QUALITIES]) are
+     * clickable through to [MoveExplanationActivity] — but only the played/best moves and scores
+     * are passed along; the opponent's punishing reply and the follow-up line both need another
+     * engine search, which that screen runs for itself once opened, instead of every single
+     * "next" press in Review paying for a search it might never look at.
+     */
+    private fun showMoveQuality(
+        quality: MoveQuality?,
+        playedMove: Move?,
+        playedScore: Int,
+        best: ChessAi.MoveEvaluation?,
+        replayMoves: List<String>
+    ) {
         if (quality == null) {
             moveQualityText.visibility = View.GONE
             moveQualityText.setOnClickListener(null)
@@ -299,9 +249,12 @@ class ReviewActivity : AppCompatActivity() {
         moveQualityText.text = getString(labelRes)
         (moveQualityText.background as GradientDrawable).setColor(ContextCompat.getColor(this, colorRes))
         moveQualityText.visibility = View.VISIBLE
-        if (explanation != null) {
+        val explainable = quality in EXPLAINABLE_MOVE_QUALITIES && playedMove != null && best != null
+        if (explainable) {
             moveQualityText.paintFlags = moveQualityText.paintFlags or Paint.UNDERLINE_TEXT_FLAG
-            moveQualityText.setOnClickListener { openExplanation(explanation, replayMoves) }
+            moveQualityText.setOnClickListener {
+                openExplanation(quality, playedMove!!, playedScore, best!!.move, best.score, replayMoves)
+            }
         } else {
             moveQualityText.paintFlags = moveQualityText.paintFlags and Paint.UNDERLINE_TEXT_FLAG.inv()
             moveQualityText.setOnClickListener(null)
@@ -309,29 +262,26 @@ class ReviewActivity : AppCompatActivity() {
         }
     }
 
-    private fun openExplanation(explanation: MoveExplanation, replayMoves: List<String>) {
+    private fun openExplanation(
+        quality: MoveQuality,
+        playedMove: Move,
+        playedScore: Int,
+        bestMove: Move,
+        bestScore: Int,
+        replayMoves: List<String>
+    ) {
         val intent = Intent(this, MoveExplanationActivity::class.java)
         intent.putStringArrayListExtra(MoveExplanationActivity.EXTRA_REPLAY_MOVES, ArrayList(replayMoves))
         intent.putExtra(MoveExplanationActivity.EXTRA_FLIPPED, boardView.flipped)
-        intent.putExtra(MoveExplanationActivity.EXTRA_QUALITY, explanation.quality.name)
-        intent.putExtra(MoveExplanationActivity.EXTRA_PLAYED_MOVE, explanation.playedMove.toAlgebraic())
-        intent.putExtra(MoveExplanationActivity.EXTRA_PLAYED_SCORE, explanation.playedScore)
-        intent.putExtra(MoveExplanationActivity.EXTRA_BEST_MOVE, explanation.bestMove.toAlgebraic())
-        intent.putExtra(MoveExplanationActivity.EXTRA_BEST_SCORE, explanation.bestScore)
-        explanation.punishingReply?.let { intent.putExtra(MoveExplanationActivity.EXTRA_PUNISH_MOVE, it.toAlgebraic()) }
-        if (explanation.followUpLine.isNotEmpty()) {
-            intent.putStringArrayListExtra(
-                MoveExplanationActivity.EXTRA_FOLLOW_UP,
-                ArrayList(explanation.followUpLine.map { it.toAlgebraic() })
-            )
-            intent.putExtra(MoveExplanationActivity.EXTRA_FOLLOW_UP_IS_MATE, explanation.followUpIsMate)
-        }
+        intent.putExtra(MoveExplanationActivity.EXTRA_QUALITY, quality.name)
+        intent.putExtra(MoveExplanationActivity.EXTRA_PLAYED_MOVE, playedMove.toAlgebraic())
+        intent.putExtra(MoveExplanationActivity.EXTRA_PLAYED_SCORE, playedScore)
+        intent.putExtra(MoveExplanationActivity.EXTRA_BEST_MOVE, bestMove.toAlgebraic())
+        intent.putExtra(MoveExplanationActivity.EXTRA_BEST_SCORE, bestScore)
         startActivity(intent)
     }
 
     companion object {
         const val EXTRA_GAME_RECORD = "chess.ui.EXTRA_GAME_RECORD"
-        private const val GENERIC_FOLLOW_UP_MAX_PLIES = 6
-        private const val MISSED_MATE_MAX_PLIES = 20
     }
 }

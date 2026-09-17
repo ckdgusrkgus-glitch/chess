@@ -81,7 +81,6 @@
     <string name="move_quality_missed_win">놓친 승리 기회</string>
 
     <string name="explanation_scenario_played">둔 수: %1$s</string>
-    <string name="explanation_scenario_played_and_punish">둔 수 + 상대 응수: %1$s</string>
     <string name="explanation_scenario_best">최선의 수: %1$s</string>
     <string name="explanation_scenario_followup">예상 진행 보기</string>
     <string name="explanation_scenario_followup_mate">메이트까지 보기</string>
