@@ -69,12 +69,14 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
         boardView.refreshStatus()
 
         findViewById<MaterialButton>(R.id.resignButton).setOnClickListener { confirmResign() }
-        findViewById<MaterialButton>(R.id.newGameButton).setOnClickListener {
-            moveHistory.clear()
-            currentAiLevel?.let { randomizeAiSide() }
-            updateSideLabels()
-            boardView.newGame()
-        }
+        findViewById<MaterialButton>(R.id.newGameButton).setOnClickListener { startNewGame() }
+    }
+
+    private fun startNewGame() {
+        moveHistory.clear()
+        currentAiLevel?.let { randomizeAiSide() }
+        updateSideLabels()
+        boardView.newGame()
     }
 
     /** Randomly gives the AI White or Black this game, and flips the board so the human sits at the bottom. */
@@ -127,9 +129,20 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
 
         if (status != GameStatus.ONGOING) {
             saveGameRecord(resultText)
+            showGameOverDialog(resultText)
         } else if (sideToMove == aiColor) {
             requestAiMove()
         }
+    }
+
+    private fun showGameOverDialog(resultText: String) {
+        if (isFinishing || isDestroyed) return
+        AlertDialog.Builder(this)
+            .setTitle(resultText)
+            .setCancelable(false)
+            .setPositiveButton(R.string.main_menu) { _, _ -> finish() }
+            .setNegativeButton(R.string.new_game) { _, _ -> startNewGame() }
+            .show()
     }
 
     private fun saveGameRecord(resultText: String) {

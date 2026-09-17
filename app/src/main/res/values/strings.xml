@@ -25,6 +25,7 @@
 
     <string name="resign">기권</string>
     <string name="new_game">새 게임</string>
+    <string name="main_menu">메인 메뉴로</string>
     <string name="resign_confirm_title">기권하시겠습니까?</string>
     <string name="resign_confirm_message">현재 게임을 종료하고 시작 화면으로 돌아갑니다.</string>
     <string name="yes">예</string>
