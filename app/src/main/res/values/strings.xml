@@ -51,10 +51,21 @@
     <string name="review_actual_move">실제 수: %1$s</string>
     <string name="review_game_ended">게임 종료: %1$s</string>
     <string name="review_ai_suggestion">AI 추천: %1$s</string>
+    <string name="review_ai_suggestion_mate">AI 추천: %1$s · 메이트 발견! 탭해서 보기</string>
     <string name="review_ai_suggestion_none">AI 추천 없음</string>
     <string name="review_prev">이전</string>
     <string name="review_next">다음</string>
     <string name="review_analyzing">분석 중…</string>
+
+    <string name="mate_line_title">AI가 찾은 메이트</string>
+    <string name="mate_line_finding">메이트 라인을 찾는 중…</string>
+    <string name="mate_line_not_found">메이트를 재현하지 못했습니다.</string>
+    <string name="mate_line_counter">메이트까지 %1$d수 · %2$d / %1$d</string>
+    <string name="mate_line_start_position">시작 위치</string>
+    <string name="mate_line_move">%1$s</string>
+    <string name="mate_line_checkmate">체크메이트!</string>
+    <string name="mate_line_play">자동 재생</string>
+    <string name="mate_line_pause">일시정지</string>
 
     <string name="move_quality_brilliant">탁월한 수!!</string>
     <string name="move_quality_great">훌륭한 수!</string>

@@ -29,6 +29,10 @@
             android:name="chess.ui.ReviewActivity"
             android:exported="false" />
 
+        <activity
+            android:name="chess.ui.MateLineActivity"
+            android:exported="false" />
+
     </application>
 
 </manifest>

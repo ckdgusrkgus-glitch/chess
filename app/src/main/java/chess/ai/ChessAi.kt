@@ -62,6 +62,26 @@ class ChessAi(private val level: AiLevel, private val random: Random = Random.De
         }.sortedByDescending { it.score }
     }
 
+    /**
+     * Greedily walks out a full line to checkmate by taking the engine's own top choice at every
+     * ply for both sides, starting from [board]. Only meaningful when [board]'s own best move
+     * already scored as [isForcedMateScore] — used to actually show the mate the engine found,
+     * rather than just claiming one exists. Stops early once nobody has a legal move (checkmate,
+     * or a rare mistaken stalemate if the "forced" mate wasn't as forced as the shallow search
+     * thought) or after [maxPlies] as a hard bound in case neither happens.
+     */
+    fun findMateLine(board: Board, maxPlies: Int = 12): List<Move> {
+        val line = mutableListOf<Move>()
+        val current = board.copy()
+        repeat(maxPlies) {
+            val top = evaluateAllMoves(current).firstOrNull() ?: return line
+            line.add(top.move)
+            current.applyMove(top.move)
+            if (MoveGenerator.legalMoves(current, current.sideToMove).isEmpty()) return line
+        }
+        return line
+    }
+
     /** True once either budget is spent. Always call at most once per node — it also counts the node. */
     private fun budgetExceeded(deadline: Long): Boolean {
         nodesVisited++
@@ -137,6 +157,13 @@ class ChessAi(private val level: AiLevel, private val random: Random = Random.De
         private const val TIME_BUDGET_NANOS = 1_500_000_000L
         private const val MAX_NODES = 20_000
         private const val MAX_QUIESCENCE_DEPTH = 4
+
+        /**
+         * True if [score] (as returned by [evaluateAllMoves], from the mover's point of view)
+         * means the engine has proven the mover can force checkmate. Comfortably below
+         * [MATE_SCORE] so it never misfires on an ordinary large material advantage.
+         */
+        fun isForcedMateScore(score: Int): Boolean = score >= MATE_SCORE - 1000
 
         private val PIECE_ORDER_VALUE = mapOf(
             PieceType.PAWN to 100,

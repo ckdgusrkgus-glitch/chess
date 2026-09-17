@@ -1,5 +1,7 @@
 package chess.ui
 
+import android.content.Intent
+import android.graphics.Paint
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
@@ -38,6 +40,9 @@ class ReviewActivity : AppCompatActivity() {
 
     private lateinit var record: GameRecord
     private var currentIndex = 0
+
+    /** Set only when the AI suggestion at the current position is a proven forced mate; tapping the suggestion then opens [MateLineActivity] starting from these replayed moves. */
+    private var mateReplayMoves: List<String>? = null
 
     private val analysisExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -118,6 +123,7 @@ class ReviewActivity : AppCompatActivity() {
      */
     private fun requestAiSuggestion() {
         val requestId = ++suggestionRequestId
+        clearMateSuggestion()
         if (currentIndex >= record.moves.size) {
             aiSuggestionText.text = ""
             moveQualityText.visibility = View.GONE
@@ -128,9 +134,10 @@ class ReviewActivity : AppCompatActivity() {
         val snapshot = boardView.game.board.copy()
         val playedMove = parseAlgebraicMove(snapshot, record.moves[currentIndex])
         val isBookMove = OpeningBook.isBookMove(record.moves.subList(0, currentIndex + 1))
+        val replayMoves = record.moves.subList(0, currentIndex)
         analysisExecutor.execute {
             val evaluations = runCatching { ChessAi(AiLevel.MASTER).evaluateAllMoves(snapshot) }.getOrDefault(emptyList())
-            val best = evaluations.firstOrNull()?.move
+            val best = evaluations.firstOrNull()
             val quality = when {
                 isBookMove -> MoveQuality.BOOK
                 playedMove != null -> MoveClassifier.classify(snapshot, playedMove, evaluations)
@@ -138,14 +145,36 @@ class ReviewActivity : AppCompatActivity() {
             }
             mainHandler.post {
                 if (requestId != suggestionRequestId || isFinishing || isDestroyed) return@post
-                aiSuggestionText.text = if (best != null) {
-                    getString(R.string.review_ai_suggestion, best.toAlgebraic())
+                if (best != null && ChessAi.isForcedMateScore(best.score)) {
+                    showMateSuggestion(best.move.toAlgebraic(), replayMoves)
                 } else {
-                    getString(R.string.review_ai_suggestion_none)
+                    aiSuggestionText.text = if (best != null) {
+                        getString(R.string.review_ai_suggestion, best.move.toAlgebraic())
+                    } else {
+                        getString(R.string.review_ai_suggestion_none)
+                    }
                 }
                 showMoveQuality(quality)
             }
         }
+    }
+
+    private fun showMateSuggestion(bestMoveNotation: String, replayMoves: List<String>) {
+        mateReplayMoves = replayMoves
+        aiSuggestionText.text = getString(R.string.review_ai_suggestion_mate, bestMoveNotation)
+        aiSuggestionText.paintFlags = aiSuggestionText.paintFlags or Paint.UNDERLINE_TEXT_FLAG
+        aiSuggestionText.setOnClickListener {
+            val intent = Intent(this, MateLineActivity::class.java)
+            intent.putStringArrayListExtra(MateLineActivity.EXTRA_REPLAY_MOVES, ArrayList(replayMoves))
+            startActivity(intent)
+        }
+    }
+
+    private fun clearMateSuggestion() {
+        mateReplayMoves = null
+        aiSuggestionText.paintFlags = aiSuggestionText.paintFlags and Paint.UNDERLINE_TEXT_FLAG.inv()
+        aiSuggestionText.setOnClickListener(null)
+        aiSuggestionText.isClickable = false
     }
 
     private fun showMoveQuality(quality: MoveQuality?) {

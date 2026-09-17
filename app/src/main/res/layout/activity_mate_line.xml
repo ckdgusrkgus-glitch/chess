@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/app_bg"
+    tools:context="chess.ui.MateLineActivity">
+
+    <TextView
+        android:id="@+id/mateTitleText"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:gravity="center"
+        android:text="@string/mate_line_title"
+        android:textColor="@color/text_primary"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <TextView
+        android:id="@+id/mateCounterText"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:gravity="center"
+        android:textColor="@color/text_secondary"
+        android:textSize="14sp"
+        app:layout_constraintTop_toBottomOf="@id/mateTitleText"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <chess.ui.ChessBoardView
+        android:id="@+id/mateBoardView"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="12dp"
+        app:layout_constraintDimensionRatio="1:1"
+        app:layout_constraintTop_toBottomOf="@id/mateCounterText"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/mateMoveText" />
+
+    <TextView
+        android:id="@+id/mateMoveText"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:gravity="center"
+        android:textColor="@color/accent_green"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        app:layout_constraintTop_toBottomOf="@id/mateBoardView"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/matePrevButton"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:layout_marginStart="16dp"
+        android:text="@string/review_prev"
+        android:textColor="@color/text_primary"
+        app:backgroundTint="@color/panel_bg"
+        app:cornerRadius="10dp"
+        app:layout_constraintTop_toBottomOf="@id/mateMoveText"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toStartOf="@id/matePlayPauseButton"
+        app:layout_constraintBottom_toTopOf="@id/mateNextButton"
+        app:layout_constraintHorizontal_chainStyle="spread" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/matePlayPauseButton"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:layout_marginStart="8dp"
+        android:text="@string/mate_line_pause"
+        app:backgroundTint="@color/accent_green"
+        app:cornerRadius="10dp"
+        app:layout_constraintTop_toBottomOf="@id/mateMoveText"
+        app:layout_constraintStart_toEndOf="@id/matePrevButton"
+        app:layout_constraintEnd_toStartOf="@id/mateNextButton"
+        app:layout_constraintBottom_toTopOf="@id/mateNextButton" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/mateNextButton"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:layout_marginStart="8dp"
+        android:layout_marginEnd="16dp"
+        android:text="@string/review_next"
+        android:textColor="@color/text_primary"
+        app:backgroundTint="@color/panel_bg"
+        app:cornerRadius="10dp"
+        app:layout_constraintTop_toBottomOf="@id/mateMoveText"
+        app:layout_constraintStart_toEndOf="@id/matePlayPauseButton"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/mateBackButton" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/mateBackButton"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="24dp"
+        android:text="@string/back"
+        android:textColor="@color/text_primary"
+        app:backgroundTint="@color/panel_bg"
+        app:cornerRadius="10dp"
+        app:layout_constraintTop_toBottomOf="@id/matePrevButton"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>
