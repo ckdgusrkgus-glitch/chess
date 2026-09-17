@@ -2,8 +2,10 @@ package chess.ui
 
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
@@ -96,7 +98,10 @@ class ChessBoardView @JvmOverloads constructor(
     // square color, so it reads the same on light and dark squares.
     private val whiteEyePaint = shapePaint(R.color.piece_white_stroke, Paint.Style.FILL)
     private val blackEyePaint = shapePaint(R.color.piece_white_fill, Paint.Style.FILL)
-    private val knightEyePath = Path().apply { addCircle(24f, 37f, 2.4f, Path.Direction.CW) }
+    private val knightEyePath = Path().apply {
+        addOval(RectF(22.6f, 45.6f, 29.4f, 50.4f), Path.Direction.CW)
+        transform(Matrix().apply { setRotate(-20f, 26f, 48f) })
+    }
 
     /** Piece silhouettes, each authored in a fixed 0..100 unit square and scaled to [cellSize] when drawn. */
     private val piecePaths: Map<PieceType, Path> = mapOf(
@@ -173,21 +178,21 @@ class ChessBoardView @JvmOverloads constructor(
     }
 
     private fun knightPath() = Path().apply {
-        moveTo(64f, 68f)
-        lineTo(64f, 50f)
-        quadTo(69f, 46f, 74f, 42f)
-        quadTo(68f, 37f, 62f, 33f)
-        lineTo(64f, 22f)
-        lineTo(54f, 9f)
-        lineTo(46f, 22f)
-        quadTo(38f, 18f, 30f, 17f)
-        quadTo(22f, 25f, 18f, 35f)
-        quadTo(15f, 38f, 16f, 42f)
-        quadTo(17f, 46f, 22f, 49f)
-        quadTo(27f, 52f, 32f, 55f)
-        lineTo(33f, 68f)
+        moveTo(46f, 6f)
+        lineTo(54f, 20f)
+        cubicTo(64f, 23f, 76f, 32f, 76f, 48f)
+        cubicTo(76f, 58f, 72f, 66f, 66f, 72f)
+        lineTo(66f, 84f)
+        lineTo(34f, 84f)
+        lineTo(34f, 72f)
+        lineTo(24f, 70f)
+        lineTo(24f, 65f)
+        lineTo(16f, 70f)
+        lineTo(18f, 54f)
+        cubicTo(19f, 46f, 21f, 41f, 24f, 37f)
+        cubicTo(22f, 29f, 26f, 19f, 36f, 14f)
+        lineTo(42f, 10f)
         close()
-        addRoundRect(22f, 68f, 78f, 82f, 6f, 6f, Path.Direction.CW)
     }
 
     private fun queenPath() = Path().apply {
