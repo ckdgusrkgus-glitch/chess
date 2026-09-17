@@ -10,10 +10,13 @@ import android.view.View
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import chess.Board
 import chess.Color
+import chess.Move
 import chess.ai.AiLevel
 import chess.ai.ChessAi
 import chess.ai.MoveClassifier
+import chess.ai.MoveExplanation
 import chess.ai.MoveQuality
 import chess.ai.OpeningBook
 import chess.history.GameRecord
@@ -130,7 +133,7 @@ class ReviewActivity : AppCompatActivity() {
         clearMateSuggestion()
         if (currentIndex >= record.moves.size) {
             aiSuggestionText.text = ""
-            moveQualityText.visibility = View.GONE
+            showMoveQuality(null, null, emptyList())
             return
         }
         aiSuggestionText.text = getString(R.string.ai_thinking)
@@ -147,6 +150,7 @@ class ReviewActivity : AppCompatActivity() {
                 playedMove != null -> MoveClassifier.classify(snapshot, playedMove, evaluations)
                 else -> null
             }
+            val explanation = buildExplanation(quality, playedMove, snapshot, evaluations, best)
             mainHandler.post {
                 if (requestId != suggestionRequestId || isFinishing || isDestroyed) return@post
                 if (best != null && ChessAi.isForcedMateScore(best.score)) {
@@ -158,9 +162,39 @@ class ReviewActivity : AppCompatActivity() {
                         getString(R.string.review_ai_suggestion_none)
                     }
                 }
-                showMoveQuality(quality)
+                showMoveQuality(quality, explanation, replayMoves)
             }
         }
+    }
+
+    /**
+     * Only for Blunder/Brilliant/Missed Win (see [MoveExplanation.EXPLAINABLE]): gathers the facts
+     * a "why" screen needs. For a blunder specifically, this pays for one more engine search (from
+     * the position right after the played move) to find the reply that actually punishes it —
+     * cheap next to the search that already ran for [evaluations], and only done when relevant.
+     */
+    private fun buildExplanation(
+        quality: MoveQuality?,
+        playedMove: Move?,
+        boardBefore: Board,
+        evaluations: List<ChessAi.MoveEvaluation>,
+        best: ChessAi.MoveEvaluation?
+    ): MoveExplanation? {
+        if (quality == null || quality !in MoveExplanation.EXPLAINABLE || playedMove == null || best == null) return null
+        val playedScore = evaluations.find { it.move == playedMove }?.score ?: 0
+        val punishingReply = if (quality == MoveQuality.BLUNDER) {
+            val afterPlayed = boardBefore.copy().apply { applyMove(playedMove) }
+            runCatching { ChessAi(AiLevel.MASTER).evaluateAllMoves(afterPlayed).firstOrNull() }.getOrNull()
+        } else null
+        return MoveExplanation(
+            quality = quality,
+            playedMove = playedMove,
+            playedScore = playedScore,
+            bestMove = best.move,
+            bestScore = best.score,
+            punishingReply = punishingReply?.move,
+            punishingReplyScore = punishingReply?.score
+        )
     }
 
     private fun showMateSuggestion(bestMoveNotation: String, replayMoves: List<String>) {
@@ -182,9 +216,11 @@ class ReviewActivity : AppCompatActivity() {
         aiSuggestionText.isClickable = false
     }
 
-    private fun showMoveQuality(quality: MoveQuality?) {
+    private fun showMoveQuality(quality: MoveQuality?, explanation: MoveExplanation?, replayMoves: List<String>) {
         if (quality == null) {
             moveQualityText.visibility = View.GONE
+            moveQualityText.setOnClickListener(null)
+            moveQualityText.isClickable = false
             return
         }
         val (labelRes, colorRes) = when (quality) {
@@ -202,6 +238,27 @@ class ReviewActivity : AppCompatActivity() {
         moveQualityText.text = getString(labelRes)
         (moveQualityText.background as GradientDrawable).setColor(ContextCompat.getColor(this, colorRes))
         moveQualityText.visibility = View.VISIBLE
+        if (explanation != null) {
+            moveQualityText.paintFlags = moveQualityText.paintFlags or Paint.UNDERLINE_TEXT_FLAG
+            moveQualityText.setOnClickListener { openExplanation(explanation, replayMoves) }
+        } else {
+            moveQualityText.paintFlags = moveQualityText.paintFlags and Paint.UNDERLINE_TEXT_FLAG.inv()
+            moveQualityText.setOnClickListener(null)
+            moveQualityText.isClickable = false
+        }
+    }
+
+    private fun openExplanation(explanation: MoveExplanation, replayMoves: List<String>) {
+        val intent = Intent(this, MoveExplanationActivity::class.java)
+        intent.putStringArrayListExtra(MoveExplanationActivity.EXTRA_REPLAY_MOVES, ArrayList(replayMoves))
+        intent.putExtra(MoveExplanationActivity.EXTRA_FLIPPED, boardView.flipped)
+        intent.putExtra(MoveExplanationActivity.EXTRA_QUALITY, explanation.quality.name)
+        intent.putExtra(MoveExplanationActivity.EXTRA_PLAYED_MOVE, explanation.playedMove.toAlgebraic())
+        intent.putExtra(MoveExplanationActivity.EXTRA_PLAYED_SCORE, explanation.playedScore)
+        intent.putExtra(MoveExplanationActivity.EXTRA_BEST_MOVE, explanation.bestMove.toAlgebraic())
+        intent.putExtra(MoveExplanationActivity.EXTRA_BEST_SCORE, explanation.bestScore)
+        explanation.punishingReply?.let { intent.putExtra(MoveExplanationActivity.EXTRA_PUNISH_MOVE, it.toAlgebraic()) }
+        startActivity(intent)
     }
 
     companion object {

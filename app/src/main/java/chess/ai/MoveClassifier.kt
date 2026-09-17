@@ -28,14 +28,18 @@ object MoveClassifier {
         }
 
         // The mover had a clearly winning move available and gave most of it back.
-        if (best.score >= 300 && cpLoss >= 200) return MoveQuality.MISSED_WIN
+        if (best.score >= 300 && cpLoss >= 150) return MoveQuality.MISSED_WIN
 
+        // Tuned to trip Blunder around "just hung a minor piece" (~320cp) rather than needing to
+        // lose nearly a whole rook (the old 450cp floor was too forgiving), with the other buckets
+        // narrowed to match — a slack "Best" band under 10cp is noise, not a meaningfully different
+        // move, so it stays as-is.
         return when {
             cpLoss < 10 -> MoveQuality.BEST
-            cpLoss < 50 -> MoveQuality.EXCELLENT
-            cpLoss < 100 -> MoveQuality.GOOD
-            cpLoss < 200 -> MoveQuality.INACCURACY
-            cpLoss < 450 -> MoveQuality.MISTAKE
+            cpLoss < 30 -> MoveQuality.EXCELLENT
+            cpLoss < 70 -> MoveQuality.GOOD
+            cpLoss < 150 -> MoveQuality.INACCURACY
+            cpLoss < 300 -> MoveQuality.MISTAKE
             else -> MoveQuality.BLUNDER
         }
     }

@@ -36,6 +36,11 @@
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden" />
 
+        <activity
+            android:name="chess.ui.MoveExplanationActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden" />
+
     </application>
 
 </manifest>
