@@ -92,6 +92,12 @@ class ChessBoardView @JvmOverloads constructor(
     private val blackFillPaint = shapePaint(R.color.piece_black_fill, Paint.Style.FILL)
     private val blackStrokePaint = shapePaint(R.color.piece_black_stroke, Paint.Style.STROKE)
 
+    // The knight's eye is a small dot drawn in the opposite tone from its own body, not the
+    // square color, so it reads the same on light and dark squares.
+    private val whiteEyePaint = shapePaint(R.color.piece_white_stroke, Paint.Style.FILL)
+    private val blackEyePaint = shapePaint(R.color.piece_white_fill, Paint.Style.FILL)
+    private val knightEyePath = Path().apply { addCircle(16f, 45f, 2.2f, Path.Direction.CW) }
+
     /** Piece silhouettes, each authored in a fixed 0..100 unit square and scaled to [cellSize] when drawn. */
     private val piecePaths: Map<PieceType, Path> = mapOf(
         PieceType.PAWN to pawnPath(),
@@ -130,75 +136,98 @@ class ChessBoardView @JvmOverloads constructor(
     // Each shape is authored in a 0..100 unit square (see the scratch SVG prototype this was
     // checked against) and drawn via a canvas scale, so PIECE_STROKE_WIDTH is in the same units.
     private fun pawnPath() = Path().apply {
-        addCircle(50f, 32f, 11f, Path.Direction.CW)
-        moveTo(38f, 45f); lineTo(62f, 45f); lineTo(70f, 68f); lineTo(30f, 68f); close()
-        addRect(26f, 68f, 74f, 78f, Path.Direction.CW)
+        addCircle(50f, 26f, 10f, Path.Direction.CW)
+        moveTo(40f, 40f)
+        cubicTo(36f, 47f, 34f, 53f, 34f, 59f)
+        cubicTo(34f, 65f, 38f, 69f, 44f, 71f)
+        lineTo(56f, 71f)
+        cubicTo(62f, 69f, 66f, 65f, 66f, 59f)
+        cubicTo(66f, 53f, 64f, 47f, 60f, 40f)
+        cubicTo(56f, 44f, 44f, 44f, 40f, 40f)
+        close()
+        addRect(28f, 71f, 72f, 76f, Path.Direction.CW)
+        addRect(24f, 76f, 76f, 81f, Path.Direction.CW)
     }
 
     private fun rookPath() = Path().apply {
-        addRect(28f, 16f, 40f, 28f, Path.Direction.CW)
-        addRect(44f, 16f, 56f, 28f, Path.Direction.CW)
-        addRect(60f, 16f, 72f, 28f, Path.Direction.CW)
-        addRect(28f, 28f, 72f, 34f, Path.Direction.CW)
-        moveTo(32f, 34f); lineTo(68f, 34f); lineTo(70f, 68f); lineTo(30f, 68f); close()
-        addRect(24f, 68f, 76f, 78f, Path.Direction.CW)
+        addRect(26f, 14f, 38f, 27f, Path.Direction.CW)
+        addRect(44f, 14f, 56f, 27f, Path.Direction.CW)
+        addRect(62f, 14f, 74f, 27f, Path.Direction.CW)
+        addRect(26f, 27f, 74f, 33f, Path.Direction.CW)
+        moveTo(31f, 33f); lineTo(69f, 33f); lineTo(67f, 64f); lineTo(33f, 64f); close()
+        addRect(27f, 64f, 73f, 70f, Path.Direction.CW)
+        addRect(22f, 70f, 78f, 76f, Path.Direction.CW)
     }
 
     private fun bishopPath() = Path().apply {
-        addCircle(50f, 14f, 4.5f, Path.Direction.CW)
-        moveTo(44f, 22f)
-        quadTo(32f, 35f, 32f, 50f)
-        quadTo(32f, 62f, 38f, 68f)
-        lineTo(62f, 68f)
-        quadTo(68f, 62f, 68f, 50f)
-        quadTo(68f, 35f, 56f, 22f)
+        addCircle(50f, 11f, 4f, Path.Direction.CW)
+        moveTo(50f, 17f)
+        cubicTo(57f, 17f, 61f, 24f, 59f, 31f)
+        cubicTo(65f, 37f, 67f, 45f, 67f, 52f)
+        cubicTo(67f, 61f, 60f, 68f, 50f, 70f)
+        cubicTo(40f, 68f, 33f, 61f, 33f, 52f)
+        cubicTo(33f, 45f, 35f, 37f, 41f, 31f)
+        cubicTo(39f, 24f, 43f, 17f, 50f, 17f)
         close()
-        addRect(28f, 68f, 72f, 78f, Path.Direction.CW)
-        moveTo(42f, 38f); lineTo(58f, 30f) // the mitre's diagonal slit; open contour, stroke-only
+        addRect(30f, 70f, 70f, 75f, Path.Direction.CW)
+        addRect(26f, 75f, 74f, 80f, Path.Direction.CW)
+        moveTo(40f, 34f); lineTo(57f, 24f) // the mitre's diagonal slit; open contour, stroke-only
     }
 
     private fun knightPath() = Path().apply {
-        moveTo(68f, 78f)
-        lineTo(68f, 58f); lineTo(58f, 48f); lineTo(64f, 40f); lineTo(56f, 36f); lineTo(60f, 28f)
-        lineTo(50f, 20f); lineTo(45f, 14f); lineTo(41f, 22f); lineTo(48f, 24f); lineTo(28f, 26f)
-        lineTo(18f, 36f); lineTo(24f, 40f); lineTo(20f, 46f); lineTo(28f, 44f); lineTo(34f, 54f)
-        lineTo(32f, 66f); lineTo(32f, 78f)
+        moveTo(68f, 71f)
+        lineTo(68f, 53f)
+        quadTo(74f, 48f, 80f, 43f)
+        quadTo(73f, 38f, 66f, 33f)
+        lineTo(70f, 19f)
+        lineTo(60f, 3f)
+        lineTo(50f, 19f)
+        quadTo(40f, 15f, 30f, 13f)
+        quadTo(20f, 23f, 14f, 35f)
+        quadTo(10f, 39f, 10f, 43f)
+        quadTo(10f, 47f, 14f, 51f)
+        quadTo(20f, 55f, 26f, 59f)
+        lineTo(28f, 71f)
         close()
+        addRect(26f, 71f, 72f, 76f, Path.Direction.CW)
+        addRect(22f, 76f, 78f, 81f, Path.Direction.CW)
     }
 
     private fun queenPath() = Path().apply {
-        moveTo(36f, 38f)
-        quadTo(28f, 48f, 28f, 55f)
-        quadTo(28f, 62f, 32f, 68f)
-        lineTo(68f, 68f)
-        quadTo(72f, 62f, 72f, 55f)
-        quadTo(72f, 48f, 64f, 38f)
+        moveTo(34f, 40f)
+        cubicTo(29f, 46f, 27f, 52f, 27f, 58f)
+        cubicTo(27f, 64f, 30f, 68f, 34f, 71f)
+        lineTo(66f, 71f)
+        cubicTo(70f, 68f, 73f, 64f, 73f, 58f)
+        cubicTo(73f, 52f, 71f, 46f, 66f, 40f)
         close()
-        moveTo(26f, 34f)
-        lineTo(28f, 26f); lineTo(33f, 32f); lineTo(39f, 24f); lineTo(44f, 32f); lineTo(50f, 22f)
-        lineTo(56f, 32f); lineTo(61f, 24f); lineTo(67f, 32f); lineTo(72f, 26f); lineTo(74f, 34f)
-        lineTo(74f, 38f); lineTo(26f, 38f)
+        moveTo(24f, 32f)
+        lineTo(28f, 22f); lineTo(34f, 30f); lineTo(40f, 20f); lineTo(46f, 29f); lineTo(50f, 18f)
+        lineTo(54f, 29f); lineTo(60f, 20f); lineTo(66f, 30f); lineTo(72f, 22f); lineTo(76f, 32f)
+        lineTo(76f, 40f); lineTo(24f, 40f)
         close()
-        addCircle(28f, 26f, 4f, Path.Direction.CW)
-        addCircle(39f, 24f, 4f, Path.Direction.CW)
-        addCircle(50f, 22f, 4.5f, Path.Direction.CW)
-        addCircle(61f, 24f, 4f, Path.Direction.CW)
-        addCircle(72f, 26f, 4f, Path.Direction.CW)
-        addRect(26f, 68f, 74f, 78f, Path.Direction.CW)
+        addCircle(28f, 22f, 4f, Path.Direction.CW)
+        addCircle(40f, 20f, 4f, Path.Direction.CW)
+        addCircle(50f, 18f, 4.5f, Path.Direction.CW)
+        addCircle(60f, 20f, 4f, Path.Direction.CW)
+        addCircle(72f, 22f, 4f, Path.Direction.CW)
+        addRect(26f, 71f, 74f, 76f, Path.Direction.CW)
+        addRect(22f, 76f, 78f, 81f, Path.Direction.CW)
     }
 
     private fun kingPath() = Path().apply {
-        moveTo(38f, 42f)
-        quadTo(30f, 50f, 30f, 58f)
-        quadTo(30f, 64f, 34f, 68f)
-        lineTo(66f, 68f)
-        quadTo(70f, 64f, 70f, 58f)
-        quadTo(70f, 50f, 62f, 42f)
+        moveTo(36f, 44f)
+        cubicTo(31f, 50f, 29f, 56f, 29f, 61f)
+        cubicTo(29f, 66f, 32f, 69f, 36f, 71f)
+        lineTo(64f, 71f)
+        cubicTo(68f, 69f, 71f, 66f, 71f, 61f)
+        cubicTo(71f, 56f, 69f, 50f, 64f, 44f)
         close()
-        addRect(32f, 34f, 68f, 42f, Path.Direction.CW)
-        addRect(47f, 14f, 53f, 32f, Path.Direction.CW)
-        addRect(40f, 19f, 60f, 25f, Path.Direction.CW)
-        addRect(28f, 68f, 72f, 78f, Path.Direction.CW)
+        addRect(30f, 38f, 70f, 45f, Path.Direction.CW)
+        addRect(46f, 12f, 54f, 32f, Path.Direction.CW)
+        addRect(38f, 18f, 62f, 25f, Path.Direction.CW)
+        addRect(26f, 71f, 74f, 76f, Path.Direction.CW)
+        addRect(22f, 76f, 78f, 81f, Path.Direction.CW)
     }
 
     /** Maps a screen (row, col) grid cell to a board square, honoring [flipped]. */
@@ -288,6 +317,9 @@ class ChessBoardView @JvmOverloads constructor(
         canvas.scale(scale, scale)
         canvas.drawPath(path, fillPaint)
         canvas.drawPath(path, strokePaint)
+        if (piece.type == PieceType.KNIGHT) {
+            canvas.drawPath(knightEyePath, if (piece.color == Color.WHITE) whiteEyePaint else blackEyePaint)
+        }
         canvas.restore()
     }
 
