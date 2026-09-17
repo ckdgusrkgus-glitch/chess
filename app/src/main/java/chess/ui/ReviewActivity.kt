@@ -13,6 +13,7 @@ import androidx.core.content.ContextCompat
 import chess.Board
 import chess.Color
 import chess.Move
+import chess.MoveGenerator
 import chess.ai.AiLevel
 import chess.ai.ChessAi
 import chess.ai.MoveClassifier
@@ -234,7 +235,15 @@ class ReviewActivity : AppCompatActivity() {
                 else -> null
             }
         }.getOrNull()
-        val followUpLine = anchor?.let { runCatching { ai.findMateLine(it, maxPlies = 6) }.getOrDefault(emptyList()) }.orEmpty()
+        // A missed forced mate ("놓친 메이트") is walked all the way to checkmate rather than cut
+        // off at a fixed depth, so the "why" screen can replay the actual mating sequence.
+        val isMissedMate = quality == MoveQuality.MISSED_WIN && ChessAi.isForcedMateScore(best.score)
+        val followUpMaxPlies = if (isMissedMate) MISSED_MATE_MAX_PLIES else GENERIC_FOLLOW_UP_MAX_PLIES
+        val followUpLine = anchor?.let { runCatching { ai.findMateLine(it, maxPlies = followUpMaxPlies) }.getOrDefault(emptyList()) }.orEmpty()
+        val followUpIsMate = isMissedMate && followUpLine.isNotEmpty() && runCatching {
+            val after = anchor!!.copy().apply { followUpLine.forEach { applyMove(it) } }
+            after.isInCheck(after.sideToMove) && MoveGenerator.legalMoves(after, after.sideToMove).isEmpty()
+        }.getOrDefault(false)
 
         return MoveExplanation(
             quality = quality,
@@ -244,7 +253,8 @@ class ReviewActivity : AppCompatActivity() {
             bestScore = best.score,
             punishingReply = punishingReply?.move,
             punishingReplyScore = punishingReply?.score,
-            followUpLine = followUpLine
+            followUpLine = followUpLine,
+            followUpIsMate = followUpIsMate
         )
     }
 
@@ -314,11 +324,14 @@ class ReviewActivity : AppCompatActivity() {
                 MoveExplanationActivity.EXTRA_FOLLOW_UP,
                 ArrayList(explanation.followUpLine.map { it.toAlgebraic() })
             )
+            intent.putExtra(MoveExplanationActivity.EXTRA_FOLLOW_UP_IS_MATE, explanation.followUpIsMate)
         }
         startActivity(intent)
     }
 
     companion object {
         const val EXTRA_GAME_RECORD = "chess.ui.EXTRA_GAME_RECORD"
+        private const val GENERIC_FOLLOW_UP_MAX_PLIES = 6
+        private const val MISSED_MATE_MAX_PLIES = 20
     }
 }

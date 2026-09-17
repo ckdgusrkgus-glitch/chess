@@ -19,11 +19,14 @@ data class MoveExplanation(
     val punishingReply: Move? = null,
     val punishingReplyScore: Int? = null,
     /**
-     * Best play for both sides, a few plies deep, starting right after the move that matters for
-     * this verdict: after [playedMove] for Brilliant, after [punishingReply] for Blunder, after
-     * [bestMove] for Missed Win.
+     * Best play for both sides, starting right after the move that matters for this verdict:
+     * after [playedMove] for Brilliant, after [punishingReply] for Blunder, after [bestMove] for
+     * Missed Win. Capped at a few plies unless [followUpIsMate] — a missed forced mate is walked
+     * out in full instead, so "놓친 메이트" can be replayed all the way to checkmate.
      */
-    val followUpLine: List<Move> = emptyList()
+    val followUpLine: List<Move> = emptyList(),
+    /** True when [followUpLine] actually ends in checkmate, rather than being cut off mid-line. */
+    val followUpIsMate: Boolean = false
 ) {
     companion object {
         val EXPLAINABLE: Set<MoveQuality> = setOf(MoveQuality.BLUNDER, MoveQuality.BRILLIANT, MoveQuality.MISSED_WIN)

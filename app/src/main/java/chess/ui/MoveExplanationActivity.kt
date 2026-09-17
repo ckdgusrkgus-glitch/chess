@@ -43,11 +43,15 @@ class MoveExplanationActivity : AppCompatActivity() {
     private var anchorMoves: List<Move> = emptyList()
     /** Best play for both sides for a few plies past [anchorMoves], so "why" isn't the same sentence every time. */
     private var followUpMoves: List<Move> = emptyList()
+    /** True when [followUpMoves] actually ends in checkmate (a missed forced mate walked out in full), rather than being cut off mid-line. */
+    private var followUpIsMate: Boolean = false
 
     /** The position the currently selected scenario starts from (after replaying [replayMoves]). */
     private lateinit var startBoard: Board
     /** The moves of the currently selected scenario button, steppable one at a time via [stepPrevButton]/[stepNextButton]. */
     private var currentScenarioMoves: List<Move> = emptyList()
+    /** True when [currentScenarioMoves] (the currently selected scenario) ends in checkmate. */
+    private var currentScenarioIsMate: Boolean = false
     /** How many of [currentScenarioMoves] are currently applied to the board (0 = start position). */
     private var scenarioStepIndex = 0
 
@@ -106,6 +110,8 @@ class MoveExplanationActivity : AppCompatActivity() {
         val anchorBoard = startBoard.copy().apply { anchorMoves.forEach { applyMove(it) } }
         val followUpNotations = intent.getStringArrayListExtra(EXTRA_FOLLOW_UP) ?: emptyList()
         followUpMoves = resolveSequentialMoves(anchorBoard, followUpNotations)
+        followUpIsMate = followUpMoves.size == followUpNotations.size &&
+            intent.getBooleanExtra(EXTRA_FOLLOW_UP_IS_MATE, false)
 
         val (labelRes, colorRes) = qualityBadge(quality)
         titleText.text = getString(labelRes)
@@ -165,41 +171,54 @@ class MoveExplanationActivity : AppCompatActivity() {
             for (i in 0 until scenarioStepIndex - 1) board.applyMove(currentScenarioMoves[i])
             describeMove(board, currentScenarioMoves[scenarioStepIndex - 1])
         }
-        stepText.text = getString(R.string.explanation_step_progress, scenarioStepIndex, currentScenarioMoves.size, moveDescription)
+        val atCheckmate = currentScenarioIsMate && scenarioStepIndex == currentScenarioMoves.size
+        stepText.text = if (atCheckmate) {
+            getString(R.string.explanation_step_checkmate, scenarioStepIndex, currentScenarioMoves.size, moveDescription)
+        } else {
+            getString(R.string.explanation_step_progress, scenarioStepIndex, currentScenarioMoves.size, moveDescription)
+        }
         stepPrevButton.isEnabled = scenarioStepIndex > 0
         stepNextButton.isEnabled = scenarioStepIndex < currentScenarioMoves.size
     }
 
+    private data class Scenario(val label: String, val moves: List<Move>, val isMate: Boolean = false)
+
     private fun setupScenarios(quality: MoveQuality) {
-        val scenarios = mutableListOf<Pair<String, List<Move>>>()
+        val scenarios = mutableListOf<Scenario>()
         val played = playedMove
         val best = bestMove
         val punish = punishMove
 
         if (played != null) {
             scenarios += if (quality == MoveQuality.BLUNDER && punish != null) {
-                getString(R.string.explanation_scenario_played_and_punish, played.toAlgebraic()) to listOf(played, punish)
+                Scenario(getString(R.string.explanation_scenario_played_and_punish, played.toAlgebraic()), listOf(played, punish))
             } else {
-                getString(R.string.explanation_scenario_played, played.toAlgebraic()) to listOf(played)
+                Scenario(getString(R.string.explanation_scenario_played, played.toAlgebraic()), listOf(played))
             }
         }
         if (quality != MoveQuality.BRILLIANT && best != null) {
-            scenarios += getString(R.string.explanation_scenario_best, best.toAlgebraic()) to listOf(best)
+            scenarios += Scenario(getString(R.string.explanation_scenario_best, best.toAlgebraic()), listOf(best))
         }
         if (followUpMoves.isNotEmpty()) {
-            scenarios += getString(R.string.explanation_scenario_followup) to (anchorMoves + followUpMoves)
+            val label = if (followUpIsMate) {
+                getString(R.string.explanation_scenario_followup_mate)
+            } else {
+                getString(R.string.explanation_scenario_followup)
+            }
+            scenarios += Scenario(label, anchorMoves + followUpMoves, followUpIsMate)
         }
 
         scenarioContainer.removeAllViews()
         val buttons = mutableListOf<MaterialButton>()
-        scenarios.forEachIndexed { index, (label, moves) ->
+        scenarios.forEachIndexed { index, scenario ->
             val button = MaterialButton(this).apply {
-                text = label
+                text = scenario.label
                 textSize = 12f
                 isAllCaps = false
             }
             button.setOnClickListener {
-                currentScenarioMoves = moves
+                currentScenarioMoves = scenario.moves
+                currentScenarioIsMate = scenario.isMate
                 scenarioStepIndex = 0
                 renderScenarioStep()
                 buttons.forEachIndexed { i, b -> styleScenarioButton(b, i == index) }
@@ -296,5 +315,6 @@ class MoveExplanationActivity : AppCompatActivity() {
         const val EXTRA_BEST_SCORE = "chess.ui.EXTRA_BEST_SCORE"
         const val EXTRA_PUNISH_MOVE = "chess.ui.EXTRA_PUNISH_MOVE"
         const val EXTRA_FOLLOW_UP = "chess.ui.EXTRA_FOLLOW_UP"
+        const val EXTRA_FOLLOW_UP_IS_MATE = "chess.ui.EXTRA_FOLLOW_UP_IS_MATE"
     }
 }
