@@ -45,6 +45,9 @@ class ReviewActivity : AppCompatActivity() {
     private lateinit var record: GameRecord
     private var currentIndex = 0
 
+    /** The position moves[currentIndex - 1] was played from, captured by [renderPosition]; null at the start position. */
+    private var boardBeforeLastMove: Board? = null
+
     /** Set only when the AI suggestion at the current position is a proven forced mate; tapping the suggestion then opens [MateLineActivity] starting from these replayed moves. */
     private var mateReplayMoves: List<String>? = null
 
@@ -97,51 +100,65 @@ class ReviewActivity : AppCompatActivity() {
         mainHandler.removeCallbacksAndMessages(null)
     }
 
-    /** Resets the board and replays moves[0 until currentIndex] to show the position at that point. */
+    /**
+     * Resets the board and replays moves[0 until currentIndex] to show the position at that
+     * point. Captures the position one ply earlier too ([boardBeforeLastMove]), since grading
+     * "the move that was just played" (moves[currentIndex - 1]) needs the position it was played
+     * *from*, not the position it produced.
+     */
     private fun renderPosition() {
         boardView.newGame()
         boardView.inputEnabled = false
         val board = boardView.game.board
         val generation = boardView.currentGeneration
+        boardBeforeLastMove = null
         for (i in 0 until currentIndex) {
+            if (i == currentIndex - 1) boardBeforeLastMove = board.copy()
             val move = parseAlgebraicMove(board, record.moves[i]) ?: break
             boardView.applyExternalMove(move, generation)
         }
 
         val total = record.moves.size
-        val displayIndex = if (total == 0) 0 else minOf(currentIndex + 1, total)
-        moveCounterText.text = getString(R.string.review_move_counter, displayIndex, total)
+        moveCounterText.text = getString(R.string.review_move_counter, currentIndex, total)
         prevButton.isEnabled = currentIndex > 0
         nextButton.isEnabled = currentIndex < total
 
-        actualMoveText.text = if (currentIndex < total) {
-            getString(R.string.review_actual_move, record.moves[currentIndex])
+        val moveText = if (currentIndex == 0) {
+            getString(R.string.review_start_position)
         } else {
-            getString(R.string.review_game_ended, record.result)
+            getString(R.string.review_actual_move, record.moves[currentIndex - 1])
+        }
+        actualMoveText.text = if (currentIndex == total && total > 0) {
+            "$moveText\n${getString(R.string.review_game_ended, record.result)}"
+        } else {
+            moveText
         }
 
         requestAiSuggestion()
     }
 
     /**
-     * Scores every legal move from the current position once, then uses that same pass both to
-     * show the engine's suggested move and to grade the move actually played (chess.com "Game
-     * Review" style: Brilliant/Great/Best/.../Blunder/Missed Win) — one engine call per position.
+     * Scores every legal move from the position the *last-played* move (moves[currentIndex - 1])
+     * was made from, then uses that same pass both to show what the engine would have played
+     * instead and to grade the move that was actually played there (chess.com "Game Review"
+     * style: Brilliant/Great/Best/.../Blunder/Missed Win) — one engine call per position. Nothing
+     * is shown at the start position (currentIndex == 0): there's no move yet to grade.
      */
     private fun requestAiSuggestion() {
         val requestId = ++suggestionRequestId
         clearMateSuggestion()
-        if (currentIndex >= record.moves.size) {
+        val lastMoveIndex = currentIndex - 1
+        val snapshot = boardBeforeLastMove
+        if (lastMoveIndex < 0 || snapshot == null) {
             aiSuggestionText.text = ""
             showMoveQuality(null, null, emptyList())
             return
         }
         aiSuggestionText.text = getString(R.string.ai_thinking)
         moveQualityText.visibility = View.GONE
-        val snapshot = boardView.game.board.copy()
-        val playedMove = parseAlgebraicMove(snapshot, record.moves[currentIndex])
-        val isBookMove = OpeningBook.isBookMove(record.moves.subList(0, currentIndex + 1))
-        val replayMoves = record.moves.subList(0, currentIndex)
+        val playedMove = parseAlgebraicMove(snapshot, record.moves[lastMoveIndex])
+        val isBookMove = OpeningBook.isBookMove(record.moves.subList(0, lastMoveIndex + 1))
+        val replayMoves = record.moves.subList(0, lastMoveIndex)
         analysisExecutor.execute {
             val evaluations = runCatching { ChessAi(AiLevel.MASTER).evaluateAllMoves(snapshot) }.getOrDefault(emptyList())
             val best = evaluations.firstOrNull()
