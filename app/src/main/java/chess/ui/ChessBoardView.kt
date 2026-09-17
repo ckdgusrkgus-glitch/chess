@@ -3,6 +3,7 @@ package chess.ui
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Path
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
@@ -83,10 +84,23 @@ class ChessBoardView @JvmOverloads constructor(
         strokeCap = Paint.Cap.ROUND
     }
 
-    private val whiteFillPaint = textPaint(R.color.piece_white_fill, Paint.Style.FILL)
-    private val whiteStrokePaint = textPaint(R.color.piece_white_stroke, Paint.Style.STROKE)
-    private val blackFillPaint = textPaint(R.color.piece_black_fill, Paint.Style.FILL)
-    private val blackStrokePaint = textPaint(R.color.piece_black_stroke, Paint.Style.STROKE)
+    // Pieces are hand-drawn shapes, not text glyphs: some devices render the ♔♛♜ Unicode chess
+    // symbols through a color-emoji font that ignores Paint's color entirely, making every piece
+    // look identical regardless of side. A Path we draw ourselves can't be overridden like that.
+    private val whiteFillPaint = shapePaint(R.color.piece_white_fill, Paint.Style.FILL)
+    private val whiteStrokePaint = shapePaint(R.color.piece_white_stroke, Paint.Style.STROKE)
+    private val blackFillPaint = shapePaint(R.color.piece_black_fill, Paint.Style.FILL)
+    private val blackStrokePaint = shapePaint(R.color.piece_black_stroke, Paint.Style.STROKE)
+
+    /** Piece silhouettes, each authored in a fixed 0..100 unit square and scaled to [cellSize] when drawn. */
+    private val piecePaths: Map<PieceType, Path> = mapOf(
+        PieceType.PAWN to pawnPath(),
+        PieceType.ROOK to rookPath(),
+        PieceType.BISHOP to bishopPath(),
+        PieceType.KNIGHT to knightPath(),
+        PieceType.QUEEN to queenPath(),
+        PieceType.KING to kingPath()
+    )
 
     private val labelOnLightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = ContextCompat.getColor(context, R.color.board_dark)
@@ -103,10 +117,88 @@ class ChessBoardView @JvmOverloads constructor(
 
     private fun solidPaint(colorRes: Int) = Paint().apply { color = ContextCompat.getColor(context, colorRes) }
 
-    private fun textPaint(colorRes: Int, paintStyle: Paint.Style) = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private fun shapePaint(colorRes: Int, paintStyle: Paint.Style) = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = ContextCompat.getColor(context, colorRes)
         style = paintStyle
-        textAlign = Paint.Align.CENTER
+        if (paintStyle == Paint.Style.STROKE) {
+            strokeWidth = PIECE_STROKE_WIDTH
+            strokeJoin = Paint.Join.ROUND
+            strokeCap = Paint.Cap.ROUND
+        }
+    }
+
+    // Each shape is authored in a 0..100 unit square (see the scratch SVG prototype this was
+    // checked against) and drawn via a canvas scale, so PIECE_STROKE_WIDTH is in the same units.
+    private fun pawnPath() = Path().apply {
+        addCircle(50f, 32f, 11f, Path.Direction.CW)
+        moveTo(38f, 45f); lineTo(62f, 45f); lineTo(70f, 68f); lineTo(30f, 68f); close()
+        addRect(26f, 68f, 74f, 78f, Path.Direction.CW)
+    }
+
+    private fun rookPath() = Path().apply {
+        addRect(28f, 16f, 40f, 28f, Path.Direction.CW)
+        addRect(44f, 16f, 56f, 28f, Path.Direction.CW)
+        addRect(60f, 16f, 72f, 28f, Path.Direction.CW)
+        addRect(28f, 28f, 72f, 34f, Path.Direction.CW)
+        moveTo(32f, 34f); lineTo(68f, 34f); lineTo(70f, 68f); lineTo(30f, 68f); close()
+        addRect(24f, 68f, 76f, 78f, Path.Direction.CW)
+    }
+
+    private fun bishopPath() = Path().apply {
+        addCircle(50f, 14f, 4.5f, Path.Direction.CW)
+        moveTo(44f, 22f)
+        quadTo(32f, 35f, 32f, 50f)
+        quadTo(32f, 62f, 38f, 68f)
+        lineTo(62f, 68f)
+        quadTo(68f, 62f, 68f, 50f)
+        quadTo(68f, 35f, 56f, 22f)
+        close()
+        addRect(28f, 68f, 72f, 78f, Path.Direction.CW)
+        moveTo(42f, 38f); lineTo(58f, 30f) // the mitre's diagonal slit; open contour, stroke-only
+    }
+
+    private fun knightPath() = Path().apply {
+        moveTo(68f, 78f)
+        lineTo(68f, 58f); lineTo(58f, 48f); lineTo(64f, 40f); lineTo(56f, 36f); lineTo(60f, 28f)
+        lineTo(50f, 20f); lineTo(45f, 14f); lineTo(41f, 22f); lineTo(48f, 24f); lineTo(28f, 26f)
+        lineTo(18f, 36f); lineTo(24f, 40f); lineTo(20f, 46f); lineTo(28f, 44f); lineTo(34f, 54f)
+        lineTo(32f, 66f); lineTo(32f, 78f)
+        close()
+    }
+
+    private fun queenPath() = Path().apply {
+        moveTo(36f, 38f)
+        quadTo(28f, 48f, 28f, 55f)
+        quadTo(28f, 62f, 32f, 68f)
+        lineTo(68f, 68f)
+        quadTo(72f, 62f, 72f, 55f)
+        quadTo(72f, 48f, 64f, 38f)
+        close()
+        moveTo(26f, 34f)
+        lineTo(28f, 26f); lineTo(33f, 32f); lineTo(39f, 24f); lineTo(44f, 32f); lineTo(50f, 22f)
+        lineTo(56f, 32f); lineTo(61f, 24f); lineTo(67f, 32f); lineTo(72f, 26f); lineTo(74f, 34f)
+        lineTo(74f, 38f); lineTo(26f, 38f)
+        close()
+        addCircle(28f, 26f, 4f, Path.Direction.CW)
+        addCircle(39f, 24f, 4f, Path.Direction.CW)
+        addCircle(50f, 22f, 4.5f, Path.Direction.CW)
+        addCircle(61f, 24f, 4f, Path.Direction.CW)
+        addCircle(72f, 26f, 4f, Path.Direction.CW)
+        addRect(26f, 68f, 74f, 78f, Path.Direction.CW)
+    }
+
+    private fun kingPath() = Path().apply {
+        moveTo(38f, 42f)
+        quadTo(30f, 50f, 30f, 58f)
+        quadTo(30f, 64f, 34f, 68f)
+        lineTo(66f, 68f)
+        quadTo(70f, 64f, 70f, 58f)
+        quadTo(70f, 50f, 62f, 42f)
+        close()
+        addRect(32f, 34f, 68f, 42f, Path.Direction.CW)
+        addRect(47f, 14f, 53f, 32f, Path.Direction.CW)
+        addRect(40f, 19f, 60f, 25f, Path.Direction.CW)
+        addRect(28f, 68f, 72f, 78f, Path.Direction.CW)
     }
 
     /** Maps a screen (row, col) grid cell to a board square, honoring [flipped]. */
@@ -116,14 +208,6 @@ class ChessBoardView @JvmOverloads constructor(
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         cellSize = minOf(w, h) / 8f
-
-        val textSize = cellSize * 0.72f
-        whiteFillPaint.textSize = textSize
-        whiteStrokePaint.textSize = textSize
-        blackFillPaint.textSize = textSize
-        blackStrokePaint.textSize = textSize
-        whiteStrokePaint.strokeWidth = cellSize * 0.045f
-        blackStrokePaint.strokeWidth = cellSize * 0.045f
 
         captureRingPaint.strokeWidth = cellSize * 0.06f
         xPaint.strokeWidth = cellSize * 0.05f
@@ -194,27 +278,22 @@ class ChessBoardView @JvmOverloads constructor(
     }
 
     private fun drawPiece(canvas: Canvas, piece: Piece, left: Float, top: Float) {
-        val cx = left + cellSize / 2
-        val cy = top + cellSize / 2 - (whiteStrokePaint.ascent() + whiteStrokePaint.descent()) / 2
-        val glyph = glyphFor(piece.type)
-        val strokePaint = if (piece.color == Color.WHITE) whiteStrokePaint else blackStrokePaint
+        val path = piecePaths.getValue(piece.type)
         val fillPaint = if (piece.color == Color.WHITE) whiteFillPaint else blackFillPaint
-        canvas.drawText(glyph, cx, cy, strokePaint)
-        canvas.drawText(glyph, cx, cy, fillPaint)
+        val strokePaint = if (piece.color == Color.WHITE) whiteStrokePaint else blackStrokePaint
+        val scale = cellSize / 100f
+
+        canvas.save()
+        canvas.translate(left, top)
+        canvas.scale(scale, scale)
+        canvas.drawPath(path, fillPaint)
+        canvas.drawPath(path, strokePaint)
+        canvas.restore()
     }
 
     private fun drawX(canvas: Canvas, cx: Float, cy: Float, half: Float) {
         canvas.drawLine(cx - half, cy - half, cx + half, cy + half, xPaint)
         canvas.drawLine(cx - half, cy + half, cx + half, cy - half, xPaint)
-    }
-
-    private fun glyphFor(type: PieceType): String = when (type) {
-        PieceType.KING -> "♚"
-        PieceType.QUEEN -> "♛"
-        PieceType.ROOK -> "♜"
-        PieceType.BISHOP -> "♝"
-        PieceType.KNIGHT -> "♞"
-        PieceType.PAWN -> "♟"
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -327,5 +406,10 @@ class ChessBoardView @JvmOverloads constructor(
 
     fun refreshStatus() {
         listener?.onStatusChanged(game.status(), game.board.sideToMove, game.board.isInCheck(game.board.sideToMove))
+    }
+
+    companion object {
+        /** Stroke width in the same 0..100 unit space the piece paths are authored in. */
+        private const val PIECE_STROKE_WIDTH = 3f
     }
 }
