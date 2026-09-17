@@ -19,7 +19,8 @@
 
         <activity
             android:name="chess.ui.GameActivity"
-            android:exported="false" />
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden" />
 
         <activity
             android:name="chess.ui.HistoryActivity"
@@ -27,11 +28,13 @@
 
         <activity
             android:name="chess.ui.ReviewActivity"
-            android:exported="false" />
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden" />
 
         <activity
             android:name="chess.ui.MateLineActivity"
-            android:exported="false" />
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden" />
 
     </application>
 
