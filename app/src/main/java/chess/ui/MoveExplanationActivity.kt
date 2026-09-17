@@ -152,7 +152,7 @@ class MoveExplanationActivity : AppCompatActivity() {
 
             // A missed forced mate ("놓친 메이트") is walked all the way to checkmate rather than
             // cut off at a fixed depth, so the screen can replay the actual mating sequence.
-            val isMissedMate = quality == MoveQuality.MISSED_WIN && ChessAi.isForcedMateScore(best.score)
+            val isMissedMate = quality == MoveQuality.MISSED_WIN && ChessAi.isForcedMateScore(bestScore)
             val maxPlies = if (isMissedMate) MISSED_MATE_MAX_PLIES else GENERIC_FOLLOW_UP_MAX_PLIES
             val followUp = anchorBoard?.let { runCatching { ai.findMateLine(it, maxPlies = maxPlies) }.getOrDefault(emptyList()) }.orEmpty()
             val isMate = isMissedMate && followUp.isNotEmpty() && anchorBoard != null && runCatching {
