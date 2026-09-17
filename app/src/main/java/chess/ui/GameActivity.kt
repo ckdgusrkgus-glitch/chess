@@ -48,6 +48,7 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        installCrashSafetyNet()
         setContentView(R.layout.activity_game)
 
         boardView = findViewById(R.id.chessBoardView)
@@ -70,6 +71,24 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
 
         findViewById<MaterialButton>(R.id.resignButton).setOnClickListener { confirmResign() }
         findViewById<MaterialButton>(R.id.newGameButton).setOnClickListener { startNewGame() }
+    }
+
+    /**
+     * If anything crashes mid-game (an uncaught exception on any thread, e.g. a rare edge case in
+     * move generation deep into the middlegame), the record was otherwise lost entirely — it only
+     * ever got saved from [onStatusChanged]/[confirmResign], both of which require the app to
+     * still be running. Saving best-effort here first means a crash still leaves the game in the
+     * 복기 (review) list, even though the underlying bug that caused it still needs fixing.
+     */
+    private fun installCrashSafetyNet() {
+        val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            Log.e(TAG, "Uncaught exception, attempting to save game before crashing", throwable)
+            runCatching {
+                if (moveHistory.isNotEmpty()) saveGameRecord(getString(R.string.game_interrupted_result))
+            }
+            previousHandler?.uncaughtException(thread, throwable)
+        }
     }
 
     private fun startNewGame() {

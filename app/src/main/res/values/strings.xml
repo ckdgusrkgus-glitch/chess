@@ -13,6 +13,7 @@
     <string name="ai_level_option">%1$s (레이팅 %2$d)</string>
     <string name="label_ai_format">%1$s · AI %2$s (%3$d)</string>
     <string name="resigned_result">기권으로 종료</string>
+    <string name="game_interrupted_result">오류로 중단됨</string>
 
     <string name="turn_white">백 차례</string>
     <string name="turn_black">흑 차례</string>
