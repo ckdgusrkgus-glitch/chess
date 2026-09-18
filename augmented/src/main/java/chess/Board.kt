@@ -11,6 +11,18 @@ class Board {
     var halfmoveClock = 0
     var fullmoveNumber = 1
 
+    // The squares castling rights are tracked against. Standard chess never needs these to be
+    // anything but the usual e1/a1/h1/e8/a8/h8, but an opening augment that relocates a side's
+    // back rank (e.g. False Start) moves its king and rooks off those squares entirely, so both
+    // move generation (see MoveGenerator.kingMoves) and rights-tracking (below, in [applyMove])
+    // need to know where "home" actually is for this game rather than assuming rank 0/7.
+    var whiteKingHome = Square(4, 0)
+    var whiteQueenRookHome = Square(0, 0)
+    var whiteKingRookHome = Square(7, 0)
+    var blackKingHome = Square(4, 7)
+    var blackQueenRookHome = Square(0, 7)
+    var blackKingRookHome = Square(7, 7)
+
     fun pieceAt(sq: Square): Piece? = squares[sq.index]
 
     fun setup() {
@@ -33,6 +45,12 @@ class Board {
         blackCanCastleQueenSide = true
         halfmoveClock = 0
         fullmoveNumber = 1
+        whiteKingHome = Square(4, 0)
+        whiteQueenRookHome = Square(0, 0)
+        whiteKingRookHome = Square(7, 0)
+        blackKingHome = Square(4, 7)
+        blackQueenRookHome = Square(0, 7)
+        blackKingRookHome = Square(7, 7)
     }
 
     fun copy(): Board {
@@ -46,6 +64,12 @@ class Board {
         b.blackCanCastleQueenSide = blackCanCastleQueenSide
         b.halfmoveClock = halfmoveClock
         b.fullmoveNumber = fullmoveNumber
+        b.whiteKingHome = whiteKingHome
+        b.whiteQueenRookHome = whiteQueenRookHome
+        b.whiteKingRookHome = whiteKingRookHome
+        b.blackKingHome = blackKingHome
+        b.blackQueenRookHome = blackQueenRookHome
+        b.blackKingRookHome = blackKingRookHome
         return b
     }
 
@@ -94,21 +118,11 @@ class Board {
             }
         }
         if (moving.type == PieceType.ROOK) {
-            when (move.from) {
-                Square(0, 0) -> whiteCanCastleQueenSide = false
-                Square(7, 0) -> whiteCanCastleKingSide = false
-                Square(0, 7) -> blackCanCastleQueenSide = false
-                Square(7, 7) -> blackCanCastleKingSide = false
-                else -> {}
-            }
+            invalidateCastlingIfRookHome(move.from)
         }
-        when (move.to) {
-            Square(0, 0) -> whiteCanCastleQueenSide = false
-            Square(7, 0) -> whiteCanCastleKingSide = false
-            Square(0, 7) -> blackCanCastleQueenSide = false
-            Square(7, 7) -> blackCanCastleKingSide = false
-            else -> {}
-        }
+        // A rook captured on its own home square loses that side's castling rights too, even
+        // though it's the CAPTURING piece that moved, not the rook itself.
+        invalidateCastlingIfRookHome(move.to)
 
         enPassantTarget = if (moving.type == PieceType.PAWN && Math.abs(move.to.rank - move.from.rank) == 2) {
             Square(move.from.file, (move.from.rank + move.to.rank) / 2)
@@ -118,6 +132,17 @@ class Board {
 
         if (sideToMove == Color.BLACK) fullmoveNumber++
         sideToMove = sideToMove.opposite()
+    }
+
+    /** Clears whichever side's castling right corresponds to [square] being one of the configured rook homes. */
+    private fun invalidateCastlingIfRookHome(square: Square) {
+        when (square) {
+            whiteQueenRookHome -> whiteCanCastleQueenSide = false
+            whiteKingRookHome -> whiteCanCastleKingSide = false
+            blackQueenRookHome -> blackCanCastleQueenSide = false
+            blackKingRookHome -> blackCanCastleKingSide = false
+            else -> {}
+        }
     }
 
     fun isSquareAttacked(square: Square, byColor: Color): Boolean {

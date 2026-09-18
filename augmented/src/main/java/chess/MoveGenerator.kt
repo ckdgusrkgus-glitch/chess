@@ -119,15 +119,22 @@ object MoveGenerator {
             }
         }
 
-        val rank = if (color == Color.WHITE) 0 else 7
+        // Castling is evaluated relative to wherever this side's king/rooks actually start this
+        // game (board.white/blackKingHome etc.) rather than assuming rank 0/7 — an opening augment
+        // like False Start can relocate a side's whole back rank, and the king/rook-moved flags
+        // already guarantee `from` can only still equal that home square if neither has moved yet.
         val opponent = color.opposite()
-        if (from == Square(4, rank) && !board.isSquareAttacked(from, opponent)) {
+        val kingHome = if (color == Color.WHITE) board.whiteKingHome else board.blackKingHome
+        if (from == kingHome && !board.isSquareAttacked(from, opponent)) {
+            val rank = kingHome.rank
             val canKingSide = if (color == Color.WHITE) board.whiteCanCastleKingSide else board.blackCanCastleKingSide
             val canQueenSide = if (color == Color.WHITE) board.whiteCanCastleQueenSide else board.blackCanCastleQueenSide
+            val kingRookHome = if (color == Color.WHITE) board.whiteKingRookHome else board.blackKingRookHome
+            val queenRookHome = if (color == Color.WHITE) board.whiteQueenRookHome else board.blackQueenRookHome
 
             if (canKingSide) {
-                val f = Square(5, rank); val g = Square(6, rank); val h = Square(7, rank)
-                val rook = board.pieceAt(h)
+                val f = Square(5, rank); val g = Square(6, rank)
+                val rook = board.pieceAt(kingRookHome)
                 if (board.pieceAt(f) == null && board.pieceAt(g) == null &&
                     rook != null && rook.type == PieceType.ROOK && rook.color == color &&
                     !board.isSquareAttacked(f, opponent) && !board.isSquareAttacked(g, opponent)
@@ -136,8 +143,8 @@ object MoveGenerator {
                 }
             }
             if (canQueenSide) {
-                val d = Square(3, rank); val c = Square(2, rank); val b = Square(1, rank); val a = Square(0, rank)
-                val rook = board.pieceAt(a)
+                val d = Square(3, rank); val c = Square(2, rank); val b = Square(1, rank)
+                val rook = board.pieceAt(queenRookHome)
                 if (board.pieceAt(d) == null && board.pieceAt(c) == null && board.pieceAt(b) == null &&
                     rook != null && rook.type == PieceType.ROOK && rook.color == color &&
                     !board.isSquareAttacked(d, opponent) && !board.isSquareAttacked(c, opponent)

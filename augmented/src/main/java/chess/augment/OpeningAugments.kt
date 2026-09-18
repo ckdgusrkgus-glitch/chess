@@ -9,11 +9,9 @@ import chess.Square
  * The Tier 1 opening augments from docs/augmented-chess-design.md's rollout plan: pure static
  * setup/parameter changes, needing no new piece kind and no per-turn status-effect tracking.
  *
- * Left out of this first batch, and why:
- *  - 부정출발 (all pieces start 2 ranks advanced): moves the king/rook off the ranks this engine's
- *    castling logic hardcodes (rank 0/7), which would silently break castling for that side.
- *  - 존버 / 재활용: need a "designate a specific pawn" or "track captured pieces per side"
- *    mechanism this milestone doesn't build yet.
+ * Still left out of this batch, and why: 존버 / 재활용 need a "designate a specific pawn" or "track
+ * captured pieces per side" mechanism this milestone doesn't build yet. (부정출발 was too, until
+ * chess.Board grew configurable castling home squares — see [FALSE_START].)
  */
 object OpeningAugments {
 
@@ -45,7 +43,42 @@ object OpeningAugments {
         promotionChoicesOverride = { listOf(PieceType.BISHOP, PieceType.KNIGHT) }
     )
 
-    val ALL: List<OpeningAugment> = listOf(QUEENS_CAVALRY, EARLY_PROMOTION, HASTY_PROMOTION)
+    val FALSE_START = OpeningAugment(
+        id = "false_start",
+        displayName = "부정출발",
+        description = "아군 모든 기물이 2칸 전진된 상태로 시작합니다.",
+        cost = 3f,
+        setupTransform = { board, color ->
+            val fromPawnRank = if (color == Color.WHITE) 1 else 6
+            val fromBackRank = if (color == Color.WHITE) 0 else 7
+            val toPawnRank = if (color == Color.WHITE) 3 else 4
+            val toBackRank = if (color == Color.WHITE) 2 else 5
+
+            for (file in 0..7) {
+                val pawn = board.squares[Square(file, fromPawnRank).index]
+                val back = board.squares[Square(file, fromBackRank).index]
+                board.squares[Square(file, fromPawnRank).index] = null
+                board.squares[Square(file, fromBackRank).index] = null
+                board.squares[Square(file, toPawnRank).index] = pawn
+                board.squares[Square(file, toBackRank).index] = back
+            }
+
+            // Castling rights are tracked against these squares (see chess.Board and
+            // MoveGenerator.kingMoves) — without updating them, castling would silently stop
+            // working the moment the king/rooks land somewhere other than rank 0/7.
+            if (color == Color.WHITE) {
+                board.whiteKingHome = Square(4, toBackRank)
+                board.whiteQueenRookHome = Square(0, toBackRank)
+                board.whiteKingRookHome = Square(7, toBackRank)
+            } else {
+                board.blackKingHome = Square(4, toBackRank)
+                board.blackQueenRookHome = Square(0, toBackRank)
+                board.blackKingRookHome = Square(7, toBackRank)
+            }
+        }
+    )
+
+    val ALL: List<OpeningAugment> = listOf(QUEENS_CAVALRY, EARLY_PROMOTION, HASTY_PROMOTION, FALSE_START)
 
     fun byId(id: String?): OpeningAugment? = ALL.find { it.id == id }
 }
