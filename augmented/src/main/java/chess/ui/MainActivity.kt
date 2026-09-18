@@ -13,7 +13,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         findViewById<MaterialButton>(R.id.startGameButton).setOnClickListener {
-            startActivity(Intent(this, GameActivity::class.java))
+            startActivity(Intent(this, AugmentDraftActivity::class.java))
         }
         findViewById<MaterialButton>(R.id.exitButton).setOnClickListener {
             finishAffinity()

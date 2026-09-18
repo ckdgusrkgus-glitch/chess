@@ -2,10 +2,10 @@ package chess
 
 object MoveGenerator {
 
-    fun pseudoLegalMoves(board: Board, from: Square): List<Move> {
+    fun pseudoLegalMoves(board: Board, from: Square, rules: AugmentRules = AugmentRules.STANDARD): List<Move> {
         val piece = board.pieceAt(from) ?: return emptyList()
         return when (piece.type) {
-            PieceType.PAWN -> pawnMoves(board, from, piece.color)
+            PieceType.PAWN -> pawnMoves(board, from, piece.color, rules)
             PieceType.KNIGHT -> knightMoves(board, from, piece.color)
             PieceType.BISHOP -> slidingMoves(board, from, piece.color, DIAGONAL_DIRS)
             PieceType.ROOK -> slidingMoves(board, from, piece.color, STRAIGHT_DIRS)
@@ -14,49 +14,38 @@ object MoveGenerator {
         }
     }
 
-    fun allPseudoLegalMoves(board: Board, color: Color): List<Move> {
+    fun allPseudoLegalMoves(board: Board, color: Color, rules: AugmentRules = AugmentRules.STANDARD): List<Move> {
         val moves = mutableListOf<Move>()
         for (i in 0..63) {
             val p = board.squares[i]
             if (p != null && p.color == color) {
-                moves.addAll(pseudoLegalMoves(board, Square.fromIndex(i)))
+                moves.addAll(pseudoLegalMoves(board, Square.fromIndex(i), rules))
             }
         }
         return moves
-    }
-
-    /** Legal moves for the whole side: pseudo-legal moves that don't leave the mover's own king in check. */
-    fun legalMoves(board: Board, color: Color): List<Move> =
-        allPseudoLegalMoves(board, color).filter { isSafe(board, it, color) }
-
-    fun legalMovesFrom(board: Board, from: Square): List<Move> {
-        val piece = board.pieceAt(from) ?: return emptyList()
-        return pseudoLegalMoves(board, from).filter { isSafe(board, it, piece.color) }
-    }
-
-    private fun isSafe(board: Board, move: Move, color: Color): Boolean {
-        val copy = board.copy()
-        copy.applyMove(move)
-        return !copy.isInCheck(color)
     }
 
     private val DIAGONAL_DIRS = listOf(1 to 1, 1 to -1, -1 to 1, -1 to -1)
     private val STRAIGHT_DIRS = listOf(1 to 0, -1 to 0, 0 to 1, 0 to -1)
     private val KNIGHT_OFFSETS = listOf(1 to 2, 2 to 1, 2 to -1, 1 to -2, -1 to -2, -2 to -1, -2 to 1, -1 to 2)
 
-    private fun pawnMoves(board: Board, from: Square, color: Color): List<Move> {
+    private fun pawnMoves(board: Board, from: Square, color: Color, rules: AugmentRules): List<Move> {
         val moves = mutableListOf<Move>()
         val dir = if (color == Color.WHITE) 1 else -1
         val startRank = if (color == Color.WHITE) 1 else 6
-        val promotionRank = if (color == Color.WHITE) 7 else 0
+        val promotionRank = rules.promotionRank(color)
+        val promotionChoices = rules.promotionChoices(color)
 
         val oneStep = from.offset(0, dir)
         if (oneStep.isValid && board.pieceAt(oneStep) == null) {
-            addPawnMove(moves, from, oneStep, promotionRank)
+            addPawnMove(moves, from, oneStep, promotionRank, promotionChoices)
             if (from.rank == startRank) {
                 val twoStep = from.offset(0, dir * 2)
                 if (twoStep.isValid && board.pieceAt(twoStep) == null) {
-                    moves.add(Move(from, twoStep))
+                    // Threaded through addPawnMove too (not just a plain move add): an augment
+                    // can lower the promotion rank far enough that even the two-square opening
+                    // move lands on it, and that should still offer a promotion.
+                    addPawnMove(moves, from, twoStep, promotionRank, promotionChoices)
                 }
             }
         }
@@ -65,7 +54,7 @@ object MoveGenerator {
             if (!capSq.isValid) continue
             val target = board.pieceAt(capSq)
             if (target != null && target.color != color) {
-                addPawnMove(moves, from, capSq, promotionRank)
+                addPawnMove(moves, from, capSq, promotionRank, promotionChoices)
             } else if (target == null && capSq == board.enPassantTarget) {
                 moves.add(Move(from, capSq, isEnPassant = true))
             }
@@ -73,9 +62,15 @@ object MoveGenerator {
         return moves
     }
 
-    private fun addPawnMove(moves: MutableList<Move>, from: Square, to: Square, promotionRank: Int) {
+    private fun addPawnMove(
+        moves: MutableList<Move>,
+        from: Square,
+        to: Square,
+        promotionRank: Int,
+        promotionChoices: List<PieceType>
+    ) {
         if (to.rank == promotionRank) {
-            for (pt in listOf(PieceType.QUEEN, PieceType.ROOK, PieceType.BISHOP, PieceType.KNIGHT)) {
+            for (pt in promotionChoices) {
                 moves.add(Move(from, to, promotion = pt))
             }
         } else {

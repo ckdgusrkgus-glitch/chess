@@ -9,10 +9,11 @@ import chess.Color
 import chess.Move
 import chess.PieceType
 import chess.Square
+import chess.augment.OpeningAugments
 import com.ckdgusrkgus.augmentedchess.R
 import com.google.android.material.button.MaterialButton
 
-/** Local two-player Augmented Chess (base ruleset only — no augment drafting yet). */
+/** Local two-player Augmented Chess, with each side's drafted opening augment (if any) applied. */
 class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
 
     private lateinit var boardView: ChessBoardView
@@ -24,14 +25,22 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
 
         boardView = findViewById(R.id.chessBoardView)
         statusText = findViewById(R.id.statusText)
-        findViewById<TextView>(R.id.topLabel).text = getString(R.string.label_black)
-        findViewById<TextView>(R.id.bottomLabel).text = getString(R.string.label_white)
+
+        val whiteAugment = OpeningAugments.byId(intent.getStringExtra(EXTRA_WHITE_AUGMENT))
+        val blackAugment = OpeningAugments.byId(intent.getStringExtra(EXTRA_BLACK_AUGMENT))
+        findViewById<TextView>(R.id.topLabel).text = sideLabel(R.string.label_black, blackAugment?.displayName)
+        findViewById<TextView>(R.id.bottomLabel).text = sideLabel(R.string.label_white, whiteAugment?.displayName)
 
         boardView.listener = this
-        boardView.refreshStatus()
+        boardView.configureAugments(whiteAugment, blackAugment)
 
         findViewById<MaterialButton>(R.id.resignButton).setOnClickListener { confirmResign() }
         findViewById<MaterialButton>(R.id.newGameButton).setOnClickListener { boardView.newGame() }
+    }
+
+    private fun sideLabel(baseRes: Int, augmentName: String?): String {
+        val base = getString(baseRes)
+        return if (augmentName != null) getString(R.string.label_with_augment, base, augmentName) else base
     }
 
     override fun onMoveMade(move: Move) {}
@@ -59,19 +68,21 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
             .show()
     }
 
-    override fun onPromotionNeeded(from: Square, to: Square, onChosen: (PieceType) -> Unit) {
-        val options = arrayOf(
-            getString(R.string.promotion_queen),
-            getString(R.string.promotion_rook),
-            getString(R.string.promotion_bishop),
-            getString(R.string.promotion_knight)
-        )
-        val pieceTypes = arrayOf(PieceType.QUEEN, PieceType.ROOK, PieceType.BISHOP, PieceType.KNIGHT)
+    override fun onPromotionNeeded(from: Square, to: Square, choices: List<PieceType>, onChosen: (PieceType) -> Unit) {
+        val options = choices.map { promotionLabel(it) }.toTypedArray()
         AlertDialog.Builder(this)
             .setTitle(R.string.promotion_title)
             .setCancelable(false)
-            .setItems(options) { _, which -> onChosen(pieceTypes[which]) }
+            .setItems(options) { _, which -> onChosen(choices[which]) }
             .show()
+    }
+
+    private fun promotionLabel(type: PieceType): String = when (type) {
+        PieceType.QUEEN -> getString(R.string.promotion_queen)
+        PieceType.ROOK -> getString(R.string.promotion_rook)
+        PieceType.BISHOP -> getString(R.string.promotion_bishop)
+        PieceType.KNIGHT -> getString(R.string.promotion_knight)
+        PieceType.KING, PieceType.PAWN -> type.name
     }
 
     private fun confirmResign() {
@@ -81,5 +92,10 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
             .setPositiveButton(R.string.yes) { _, _ -> finish() }
             .setNegativeButton(R.string.no, null)
             .show()
+    }
+
+    companion object {
+        const val EXTRA_WHITE_AUGMENT = "chess.ui.EXTRA_WHITE_AUGMENT"
+        const val EXTRA_BLACK_AUGMENT = "chess.ui.EXTRA_BLACK_AUGMENT"
     }
 }

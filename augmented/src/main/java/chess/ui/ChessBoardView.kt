@@ -15,6 +15,7 @@ import chess.Move
 import chess.Piece
 import chess.PieceType
 import chess.Square
+import chess.augment.OpeningAugment
 import com.ckdgusrkgus.augmentedchess.R
 
 /**
@@ -32,7 +33,7 @@ class ChessBoardView @JvmOverloads constructor(
 
     interface Listener {
         fun onStatusChanged(status: AugmentedGameStatus, sideToMove: Color, inCheck: Boolean)
-        fun onPromotionNeeded(from: Square, to: Square, onChosen: (PieceType) -> Unit)
+        fun onPromotionNeeded(from: Square, to: Square, choices: List<PieceType>, onChosen: (PieceType) -> Unit)
         fun onMoveMade(move: Move) {}
     }
 
@@ -48,7 +49,8 @@ class ChessBoardView @JvmOverloads constructor(
             invalidate()
         }
 
-    val game = AugmentedChessGame()
+    private var _game = AugmentedChessGame()
+    val game: AugmentedChessGame get() = _game
 
     /** Bumped by [newGame]; lets a caller discard a stale async result. */
     val currentGeneration: Int get() = generation
@@ -353,13 +355,17 @@ class ChessBoardView @JvmOverloads constructor(
         if (candidates.size > 1) {
             val from = currentSelected
             val listenerRef = listener
+            // The candidates ARE the promotion options for this move (one per possible piece,
+            // per chess.AugmentRules.promotionChoices for the mover's color) — never assume the
+            // standard Q/R/B/N set, since an augment like Hasty Promotion narrows it.
+            val choices = candidates.mapNotNull { it.promotion }
             if (listenerRef != null) {
-                listenerRef.onPromotionNeeded(from, square) { chosen ->
+                listenerRef.onPromotionNeeded(from, square, choices) { chosen ->
                     val applied = game.tryMove(from, square, chosen)
                     if (applied != null) afterMove(applied) else deselect()
                 }
             } else {
-                val applied = game.tryMove(from, square, PieceType.QUEEN)
+                val applied = game.tryMove(from, square, choices.first())
                 if (applied != null) afterMove(applied) else deselect()
             }
         } else {
@@ -389,9 +395,25 @@ class ChessBoardView @JvmOverloads constructor(
         refreshStatus()
     }
 
+    /** Resets to the current game's starting position (re-applying whichever opening augments [configureAugments] set). */
     fun newGame() {
         generation++
-        game.board.setup()
+        _game.resetBoard()
+        lastMove = null
+        inputEnabled = true
+        deselect()
+        refreshStatus()
+    }
+
+    /**
+     * Sets each side's drafted opening augment (see [chess.augment.OpeningAugment]) and starts a
+     * fresh game with them applied. Must be called before the board is otherwise used — a
+     * [ChessBoardView] is inflated from XML with no constructor arguments, so this is how a caller
+     * (e.g. an Activity reading Intent extras) hands it the augments picked for this game.
+     */
+    fun configureAugments(whiteAugment: OpeningAugment?, blackAugment: OpeningAugment?) {
+        _game = AugmentedChessGame(whiteAugment, blackAugment)
+        generation++
         lastMove = null
         inputEnabled = true
         deselect()

@@ -29,4 +29,10 @@
 
     <string name="label_black">흑</string>
     <string name="label_white">백</string>
+    <string name="label_with_augment">%1$s (%2$s)</string>
+
+    <string name="back">뒤로</string>
+    <string name="draft_pick_white">백의 오프닝 증강을 선택하세요</string>
+    <string name="draft_pick_black">흑의 오프닝 증강을 선택하세요</string>
+    <string name="draft_card_format">%1$s\n%2$s</string>
 </resources>
