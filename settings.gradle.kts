@@ -20,3 +20,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "chess"
 include(":app")
+include(":augmented")

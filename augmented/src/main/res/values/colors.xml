@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Board (chess.com "green" theme reference, matching the original app) -->
+    <color name="board_light">#EEEED2</color>
+    <color name="board_dark">#769656</color>
+    <color name="board_light_selected">#F6F669</color>
+    <color name="board_dark_selected">#BACA44</color>
+    <color name="board_light_last_move">#F5F682</color>
+    <color name="board_dark_last_move">#BBCB44</color>
+    <color name="check_highlight">#E0605B</color>
+
+    <!-- Move hints -->
+    <color name="move_hint_dot">#40000000</color>
+    <color name="move_hint_capture_ring">#40000000</color>
+
+    <!-- Pieces -->
+    <color name="piece_white_fill">#FFFFFF</color>
+    <color name="piece_white_stroke">#3B3B3B</color>
+    <color name="piece_black_fill">#262421</color>
+    <color name="piece_black_stroke">#0D0D0D</color>
+
+    <!-- App chrome -->
+    <color name="app_bg">#2B2B33</color>
+    <color name="panel_bg">#3A3A45</color>
+    <color name="accent_green">#7FA650</color>
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#B8B6B4</color>
+
+    <!-- Launcher icon: a distinct accent (violet) from the original app's green, so the two are
+         easy to tell apart on a home screen. -->
+    <color name="ic_launcher_background">#5C4B99</color>
+</resources>
