@@ -40,4 +40,7 @@
 
     <string name="middle_draft_pick_white">백의 미들 증강을 선택하세요</string>
     <string name="middle_draft_pick_black">흑의 미들 증강을 선택하세요</string>
+
+    <string name="end_draft_pick_white">백의 엔드 증강을 선택하세요</string>
+    <string name="end_draft_pick_black">흑의 엔드 증강을 선택하세요</string>
 </resources>

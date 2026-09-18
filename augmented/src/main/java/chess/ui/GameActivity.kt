@@ -9,6 +9,7 @@ import chess.Color
 import chess.Move
 import chess.PieceType
 import chess.Square
+import chess.augment.EndAugments
 import chess.augment.MiddleAugments
 import chess.augment.OpeningAugments
 import com.ckdgusrkgus.augmentedchess.R
@@ -49,6 +50,9 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
         if (boardView.game.isMiddleDraftDue()) {
             boardView.game.markMiddleDraftOffered()
             showMiddleAugmentDraft(Color.WHITE)
+        } else if (boardView.game.isEndDraftDue()) {
+            boardView.game.markEndDraftOffered()
+            showEndAugmentDraft(Color.WHITE)
         }
     }
 
@@ -69,6 +73,30 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
             .setItems(options) { _, which ->
                 boardView.game.applyMiddleAugment(augments[which], color)
                 if (color == Color.WHITE) showMiddleAugmentDraft(Color.BLACK)
+            }
+            .show()
+    }
+
+    /**
+     * Shows the one-time "엔드 증강" (end augment) draft for [color], then Black's in turn. Every
+     * end augment implemented so far is an immediate alternative win condition (레이싱 킹/더블 체크/
+     * 하이랜더), so a pick can end the game on the spot — [ChessBoardView.refreshStatus] is called
+     * right after applying it, and the Black pick is skipped if that already ended the game.
+     */
+    private fun showEndAugmentDraft(color: Color) {
+        if (isFinishing || isDestroyed) return
+        val augments = EndAugments.ALL
+        val options = augments.map { getString(R.string.draft_card_format, it.displayName, it.description) }.toTypedArray()
+        val titleRes = if (color == Color.WHITE) R.string.end_draft_pick_white else R.string.end_draft_pick_black
+        AlertDialog.Builder(this)
+            .setTitle(titleRes)
+            .setCancelable(false)
+            .setItems(options) { _, which ->
+                boardView.game.applyEndAugment(augments[which], color)
+                boardView.refreshStatus()
+                if (color == Color.WHITE && boardView.game.status() == AugmentedGameStatus.ONGOING) {
+                    showEndAugmentDraft(Color.BLACK)
+                }
             }
             .show()
     }

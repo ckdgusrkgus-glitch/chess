@@ -1,5 +1,6 @@
 package chess
 
+import chess.augment.EndAugment
 import chess.augment.MiddleAugment
 import chess.augment.OpeningAugment
 
@@ -51,6 +52,15 @@ class AugmentedChessGame(
     /** Whether this game's single middle-augment draft (see [isMiddleDraftDue]) has already been offered. */
     private var middleDraftOffered = false
 
+    /** Which sides have been granted each 엔드 증강 (end augment) win condition so far — see
+     *  [applyEndAugment] and [status]. */
+    private val endRacingKing = mutableSetOf<Color>()
+    private val endDoubleCheck = mutableSetOf<Color>()
+    private val endHighlander = mutableSetOf<Color>()
+
+    /** Whether this game's single end-augment draft (see [isEndDraftDue]) has already been offered. */
+    private var endDraftOffered = false
+
     /** One entry per side that drafted 존버, tracking where that pawn currently is. Removed the
      *  moment it's captured, promoted some other way, or its 14-ply timer fires. */
     private class TurtlingWatch(val color: Color, var square: Square)
@@ -91,6 +101,11 @@ class AugmentedChessGame(
         middlePawnRetreat.clear()
         middleKingKnight.clear()
         middleDraftOffered = false
+
+        endRacingKing.clear()
+        endDoubleCheck.clear()
+        endHighlander.clear()
+        endDraftOffered = false
     }
 
     /**
@@ -115,6 +130,28 @@ class AugmentedChessGame(
         if (augment.grantsKingKnightMoves) middleKingKnight[color] = true
     }
 
+    /**
+     * Whether the (single, per-game) 엔드 증강 draft should be offered now. Same shape as
+     * [isMiddleDraftDue], just later and independent of it — true once [plyCount] reaches
+     * [END_DRAFT_PLY], until [markEndDraftOffered] is called.
+     *
+     * Like the middle-draft cadence, the source material doesn't say how many plies apart
+     * end-augment drafts actually occur — this is a documented assumption (one draft per game, at
+     * ply 24, comfortably after the middle draft), not a sourced fact.
+     */
+    fun isEndDraftDue(): Boolean = !endDraftOffered && plyCount >= END_DRAFT_PLY
+
+    fun markEndDraftOffered() {
+        endDraftOffered = true
+    }
+
+    /** Grants [color] the win condition(s) of [augment] for the rest of this game. */
+    fun applyEndAugment(augment: EndAugment, color: Color) {
+        if (augment.grantsRacingKing) endRacingKing += color
+        if (augment.grantsDoubleCheck) endDoubleCheck += color
+        if (augment.grantsHighlander) endHighlander += color
+    }
+
     /** Every geometrically legal move for the side to move. Unlike a check-filtered "legal moves"
      *  list, nothing is filtered out for leaving the mover's own king in check, since that's now allowed. */
     fun movesForSideToMove(): List<Move> = MoveGenerator.allPseudoLegalMoves(board, board.sideToMove, rules)
@@ -128,6 +165,9 @@ class AugmentedChessGame(
     fun status(): AugmentedGameStatus {
         if (!kingAlive(Color.BLACK)) return AugmentedGameStatus.WHITE_WINS
         if (!kingAlive(Color.WHITE)) return AugmentedGameStatus.BLACK_WINS
+
+        endGameWinner()?.let { return it }
+
         if (movesForSideToMove().isEmpty()) {
             return if (board.sideToMove == Color.WHITE) AugmentedGameStatus.BLACK_WINS else AugmentedGameStatus.WHITE_WINS
         }
@@ -136,6 +176,36 @@ class AugmentedChessGame(
 
     private fun kingAlive(color: Color): Boolean =
         board.squares.any { it != null && it.type == PieceType.KING && it.color == color }
+
+    /** Checks every granted 엔드 증강 win condition, in no particular priority — a pure board-state
+     *  predicate for each, independent of whose move just happened. */
+    private fun endGameWinner(): AugmentedGameStatus? {
+        for (color in endRacingKing) {
+            val backRank = if (color == Color.WHITE) 7 else 0
+            if (board.findKing(color).rank == backRank) return winFor(color)
+        }
+        for (color in endDoubleCheck) {
+            if (board.attackersOf(board.findKing(color.opposite()), color).size >= 2) return winFor(color)
+        }
+        for (color in endHighlander) {
+            if (hasNoDuplicatePieces(color)) return winFor(color)
+        }
+        return null
+    }
+
+    private fun winFor(color: Color): AugmentedGameStatus =
+        if (color == Color.WHITE) AugmentedGameStatus.WHITE_WINS else AugmentedGameStatus.BLACK_WINS
+
+    /** True if [color] has at most one of each piece type on the board — 하이랜더's win condition.
+     *  A lone king alone also satisfies this (0 of everything else counts as "no duplicates"),
+     *  matching the source material's literal wording rather than requiring a minimum piece count. */
+    private fun hasNoDuplicatePieces(color: Color): Boolean {
+        val counts = mutableMapOf<PieceType, Int>()
+        for (piece in board.squares) {
+            if (piece != null && piece.color == color) counts[piece.type] = (counts[piece.type] ?: 0) + 1
+        }
+        return counts.values.all { it <= 1 }
+    }
 
     /** Attempts to play a move from [from] to [to]. Returns the applied [Move], or null if illegal. */
     fun tryMove(from: Square, to: Square, promotion: PieceType? = null): Move? {
@@ -186,6 +256,7 @@ class AugmentedChessGame(
     companion object {
         private const val TURTLING_TRIGGER_PLIES = 14
         const val MIDDLE_DRAFT_PLY = 10
+        const val END_DRAFT_PLY = 24
     }
 }
 

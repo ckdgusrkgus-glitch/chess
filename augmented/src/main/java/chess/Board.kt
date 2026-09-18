@@ -206,6 +206,73 @@ class Board {
 
     fun isInCheck(color: Color): Boolean = isSquareAttacked(findKing(color), color.opposite())
 
+    /**
+     * Every square holding a [byColor] piece that attacks [square] — the same piece-by-piece rules
+     * as [isSquareAttacked], but collecting every attacker instead of stopping at the first one.
+     * Needed by 더블 체크 (Double Check), which cares whether a king is attacked by two or more
+     * *distinct* pieces at once, not just whether it's attacked at all.
+     */
+    fun attackersOf(square: Square, byColor: Color): List<Square> {
+        val attackers = mutableListOf<Square>()
+
+        val attackerPawnRankOffset = if (byColor == Color.WHITE) -1 else 1
+        for (df in intArrayOf(-1, 1)) {
+            val sq = square.offset(df, attackerPawnRankOffset)
+            if (sq.isValid) {
+                val p = pieceAt(sq)
+                if (p != null && p.color == byColor && p.type == PieceType.PAWN) attackers.add(sq)
+            }
+        }
+
+        val knightOffsets = arrayOf(
+            1 to 2, 2 to 1, 2 to -1, 1 to -2, -1 to -2, -2 to -1, -2 to 1, -1 to 2
+        )
+        for ((df, dr) in knightOffsets) {
+            val sq = square.offset(df, dr)
+            if (sq.isValid) {
+                val p = pieceAt(sq)
+                if (p != null && p.color == byColor && p.type == PieceType.KNIGHT) attackers.add(sq)
+            }
+        }
+
+        for (df in -1..1) for (dr in -1..1) {
+            if (df == 0 && dr == 0) continue
+            val sq = square.offset(df, dr)
+            if (sq.isValid) {
+                val p = pieceAt(sq)
+                if (p != null && p.color == byColor && p.type == PieceType.KING) attackers.add(sq)
+            }
+        }
+
+        val diagonalDirs = arrayOf(1 to 1, 1 to -1, -1 to 1, -1 to -1)
+        for ((df, dr) in diagonalDirs) {
+            var sq = square.offset(df, dr)
+            while (sq.isValid) {
+                val p = pieceAt(sq)
+                if (p != null) {
+                    if (p.color == byColor && (p.type == PieceType.BISHOP || p.type == PieceType.QUEEN)) attackers.add(sq)
+                    break
+                }
+                sq = sq.offset(df, dr)
+            }
+        }
+
+        val straightDirs = arrayOf(1 to 0, -1 to 0, 0 to 1, 0 to -1)
+        for ((df, dr) in straightDirs) {
+            var sq = square.offset(df, dr)
+            while (sq.isValid) {
+                val p = pieceAt(sq)
+                if (p != null) {
+                    if (p.color == byColor && (p.type == PieceType.ROOK || p.type == PieceType.QUEEN)) attackers.add(sq)
+                    break
+                }
+                sq = sq.offset(df, dr)
+            }
+        }
+
+        return attackers
+    }
+
     fun render(): String {
         val sb = StringBuilder()
         for (rank in 7 downTo 0) {
