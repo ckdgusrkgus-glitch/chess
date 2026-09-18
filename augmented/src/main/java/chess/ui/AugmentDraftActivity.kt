@@ -18,15 +18,18 @@ import com.google.android.material.button.MaterialButton
  * matching the source game's rule that this category is drafted once, automatically applied at
  * the start of the game, independently per side.
  *
- * Also carries the one "규칙 증강" (rule augment) implemented so far, 재활용 (Recycle): unlike an
+ * Also carries every "규칙 증강" (rule augment) implemented so far — 재활용/매너/왕관/초월: unlike an
  * opening augment, a rule augment applies identically to both sides regardless of who drafts what,
- * so it's a single checkbox here rather than something either side picks.
+ * so each is a single checkbox here rather than something either side picks.
  */
 class AugmentDraftActivity : AppCompatActivity() {
 
     private lateinit var titleText: TextView
     private lateinit var cardsContainer: LinearLayout
     private lateinit var recycleCheckBox: CheckBox
+    private lateinit var mannersCheckBox: CheckBox
+    private lateinit var crownCheckBox: CheckBox
+    private lateinit var transcendCheckBox: CheckBox
 
     private var currentColor = Color.WHITE
     private var whitePick: OpeningAugment? = null
@@ -38,6 +41,9 @@ class AugmentDraftActivity : AppCompatActivity() {
         titleText = findViewById(R.id.draftTitleText)
         cardsContainer = findViewById(R.id.draftCardsContainer)
         recycleCheckBox = findViewById(R.id.recycleCheckBox)
+        mannersCheckBox = findViewById(R.id.mannersCheckBox)
+        crownCheckBox = findViewById(R.id.crownCheckBox)
+        transcendCheckBox = findViewById(R.id.transcendCheckBox)
         findViewById<MaterialButton>(R.id.draftBackButton).setOnClickListener { finish() }
 
         showCandidatesFor(Color.WHITE)
@@ -93,6 +99,9 @@ class AugmentDraftActivity : AppCompatActivity() {
             intent.putExtra(GameActivity.EXTRA_WHITE_AUGMENT, whitePick?.id)
             intent.putExtra(GameActivity.EXTRA_BLACK_AUGMENT, augment.id)
             intent.putExtra(GameActivity.EXTRA_RECYCLE_RULE, recycleCheckBox.isChecked)
+            intent.putExtra(GameActivity.EXTRA_MANNERS_RULE, mannersCheckBox.isChecked)
+            intent.putExtra(GameActivity.EXTRA_CROWN_RULE, crownCheckBox.isChecked)
+            intent.putExtra(GameActivity.EXTRA_TRANSCEND_RULE, transcendCheckBox.isChecked)
             startActivity(intent)
             finish()
         }

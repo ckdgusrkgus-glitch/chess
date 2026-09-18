@@ -37,6 +37,9 @@
     <string name="draft_pick_turtling_file">지정할 폰의 파일을 선택하세요</string>
     <string name="draft_card_format">%1$s\n%2$s</string>
     <string name="recycle_rule_toggle">재활용 규칙 적용 (양측 공통: 폰은 이미 잡힌 아군 기물로만 프로모션 가능)</string>
+    <string name="manners_rule_toggle">매너 규칙 적용 (양측 공통: 기물을 잡으면 평범한 이동을 하기 전까지 다시 잡을 수 없음)</string>
+    <string name="crown_rule_toggle">왕관 규칙 적용 (양측 공통: 중앙 4칸 중 한 곳에 왕관 생성, 10수 이상 점유 시 승리)</string>
+    <string name="transcend_rule_toggle">초월 규칙 적용 (양측 공통: 기물을 잡으면 다음 단계로 성장, 폰→나이트→룩→퀸)</string>
 
     <string name="middle_draft_pick_white">백의 미들 증강을 선택하세요</string>
     <string name="middle_draft_pick_black">흑의 미들 증강을 선택하세요</string>

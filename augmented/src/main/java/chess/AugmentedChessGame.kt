@@ -18,14 +18,20 @@ import chess.augment.OpeningAugment
  *
  * [whiteAugment]/[blackAugment] are each side's drafted "오프닝 증강" (opening augment, see
  * [OpeningAugment]), applied once per [resetBoard] call and reflected for the rest of that game in
- * [rules]. [recycleRuleEnabled] turns on "재활용" (Recycle), a "규칙 증강" (rule augment) that — unlike
- * opening augments — applies identically to both sides regardless of what they drafted, so it's a
- * separate flag rather than something either side picks.
+ * [rules]. [recycleRuleEnabled]/[mannersRuleEnabled]/[crownRuleEnabled]/[transcendRuleEnabled] are
+ * "규칙 증강" (rule augments) — unlike opening/middle/end augments, these apply identically to both
+ * sides regardless of what anyone drafted, so each is a plain flag rather than something a side
+ * picks. (The source material says rule augments are now applied randomly before the game starts
+ * rather than drafted at all — this module keeps the simpler manual-toggle approach 재활용 already
+ * used, for the same reason: there's no drafting UI here that a "random pool" would plug into.)
  */
 class AugmentedChessGame(
     private val whiteAugment: OpeningAugment? = null,
     private val blackAugment: OpeningAugment? = null,
-    private val recycleRuleEnabled: Boolean = false
+    private val recycleRuleEnabled: Boolean = false,
+    private val mannersRuleEnabled: Boolean = false,
+    private val crownRuleEnabled: Boolean = false,
+    private val transcendRuleEnabled: Boolean = false
 ) {
     val board = Board()
 
@@ -71,6 +77,16 @@ class AugmentedChessGame(
     /** How many of those credits each color has already spent on a promotion. */
     private val usedPromotionCounts = mutableMapOf<Color, MutableMap<PieceType, Int>>()
 
+    /** Squares currently holding a piece that captured and hasn't made a non-capturing move since —
+     *  매너's "no consecutive captures" bar. Tracked by square and followed as that piece moves,
+     *  the same way [turtlingWatches] follows a specific pawn. */
+    private val captureBarred = mutableSetOf<Square>()
+
+    /** 왕관's randomly-chosen center square this game, or null if [crownRuleEnabled] is off. */
+    private var crownSquare: Square? = null
+    private var crownHolder: Color? = null
+    private var crownHeldPlies = 0
+
     init {
         resetBoard()
     }
@@ -106,6 +122,11 @@ class AugmentedChessGame(
         endDoubleCheck.clear()
         endHighlander.clear()
         endDraftOffered = false
+
+        captureBarred.clear()
+        crownSquare = if (crownRuleEnabled) CROWN_CANDIDATE_SQUARES.random() else null
+        crownHolder = null
+        crownHeldPlies = 0
     }
 
     /**
@@ -154,19 +175,28 @@ class AugmentedChessGame(
 
     /** Every geometrically legal move for the side to move. Unlike a check-filtered "legal moves"
      *  list, nothing is filtered out for leaving the mover's own king in check, since that's now allowed. */
-    fun movesForSideToMove(): List<Move> = MoveGenerator.allPseudoLegalMoves(board, board.sideToMove, rules)
+    fun movesForSideToMove(): List<Move> = applyManners(MoveGenerator.allPseudoLegalMoves(board, board.sideToMove, rules))
 
     fun movesFrom(square: Square): List<Move> {
         val piece = board.pieceAt(square) ?: return emptyList()
         if (piece.color != board.sideToMove) return emptyList()
-        return MoveGenerator.pseudoLegalMoves(board, square, rules)
+        return applyManners(MoveGenerator.pseudoLegalMoves(board, square, rules))
     }
+
+    /** 매너: a move whose origin square is currently barred (see [captureBarred]) may not capture. */
+    private fun applyManners(moves: List<Move>): List<Move> {
+        if (!mannersRuleEnabled) return moves
+        return moves.filterNot { move -> move.from in captureBarred && wouldCapture(move) }
+    }
+
+    private fun wouldCapture(move: Move): Boolean = move.isEnPassant || board.pieceAt(move.to) != null
 
     fun status(): AugmentedGameStatus {
         if (!kingAlive(Color.BLACK)) return AugmentedGameStatus.WHITE_WINS
         if (!kingAlive(Color.WHITE)) return AugmentedGameStatus.BLACK_WINS
 
         endGameWinner()?.let { return it }
+        crownWinner()?.let { return it }
 
         if (movesForSideToMove().isEmpty()) {
             return if (board.sideToMove == Color.WHITE) AugmentedGameStatus.BLACK_WINS else AugmentedGameStatus.WHITE_WINS
@@ -195,6 +225,13 @@ class AugmentedChessGame(
 
     private fun winFor(color: Color): AugmentedGameStatus =
         if (color == Color.WHITE) AugmentedGameStatus.WHITE_WINS else AugmentedGameStatus.BLACK_WINS
+
+    /** 왕관: whoever has held [crownSquare] continuously for [CROWN_WIN_PLIES] plies wins — tracked
+     *  ply-by-ply in [onMoveApplied], this just reads the result. */
+    private fun crownWinner(): AugmentedGameStatus? {
+        val holder = crownHolder ?: return null
+        return if (crownHeldPlies >= CROWN_WIN_PLIES) winFor(holder) else null
+    }
 
     /** True if [color] has at most one of each piece type on the board — 하이랜더's win condition.
      *  A lone king alone also satisfies this (0 of everything else counts as "no duplicates"),
@@ -251,12 +288,54 @@ class AugmentedChessGame(
             turtlingWatches.forEach { board.squares[it.square.index] = Piece(PieceType.QUEEN, it.color) }
             turtlingWatches.clear()
         }
+
+        if (mannersRuleEnabled) {
+            captureBarred.remove(move.from)
+            if (captured != null) captureBarred.add(move.to) else captureBarred.remove(move.to)
+        }
+
+        if (crownRuleEnabled) {
+            val square = crownSquare
+            val occupant = if (square != null) board.pieceAt(square) else null
+            val previousHolder = crownHolder
+            crownHolder = occupant?.color
+            crownHeldPlies = when {
+                occupant == null -> 0
+                occupant.color == previousHolder -> crownHeldPlies + 1
+                else -> 1
+            }
+        }
+
+        // 초월: a piece that just captured (and didn't also promote this same move — a promotion
+        // already decided its final type) steps to the next tier. 퀸/킹 have no next tier, matching
+        // the source material excluding the queen (and, implicitly, the king) from transcending.
+        if (transcendRuleEnabled && captured != null && move.promotion == null) {
+            val piece = board.pieceAt(move.to)
+            val nextType = piece?.let { transcendedTypeOf(it.type) }
+            if (piece != null && nextType != null) {
+                board.squares[move.to.index] = Piece(nextType, piece.color)
+            }
+        }
+    }
+
+    /** The next tier in 초월's capture chain (폰 → 나이트 → 룩 → 퀸, or 비숍 → 룩 → 퀸), or null once a
+     *  piece has nothing left to transcend into. Which minor piece a transcending pawn becomes isn't
+     *  specified by the source material (only that it does), so this always picks 나이트 — a
+     *  documented simplification, not a sourced rule, made to avoid adding a whole second
+     *  choice-dialog flow (like promotion's) for a single ambiguous step. */
+    private fun transcendedTypeOf(type: PieceType): PieceType? = when (type) {
+        PieceType.PAWN -> PieceType.KNIGHT
+        PieceType.KNIGHT, PieceType.BISHOP -> PieceType.ROOK
+        PieceType.ROOK -> PieceType.QUEEN
+        PieceType.QUEEN, PieceType.KING -> null
     }
 
     companion object {
         private const val TURTLING_TRIGGER_PLIES = 14
         const val MIDDLE_DRAFT_PLY = 10
         const val END_DRAFT_PLY = 24
+        const val CROWN_WIN_PLIES = 10
+        private val CROWN_CANDIDATE_SQUARES = listOf(Square(3, 3), Square(3, 4), Square(4, 3), Square(4, 4))
     }
 }
 

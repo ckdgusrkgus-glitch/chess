@@ -411,8 +411,17 @@ class ChessBoardView @JvmOverloads constructor(
      * [ChessBoardView] is inflated from XML with no constructor arguments, so this is how a caller
      * (e.g. an Activity reading Intent extras) hands it the augments picked for this game.
      */
-    fun configureAugments(whiteAugment: OpeningAugment?, blackAugment: OpeningAugment?, recycleRuleEnabled: Boolean = false) {
-        _game = AugmentedChessGame(whiteAugment, blackAugment, recycleRuleEnabled)
+    fun configureAugments(
+        whiteAugment: OpeningAugment?,
+        blackAugment: OpeningAugment?,
+        recycleRuleEnabled: Boolean = false,
+        mannersRuleEnabled: Boolean = false,
+        crownRuleEnabled: Boolean = false,
+        transcendRuleEnabled: Boolean = false
+    ) {
+        _game = AugmentedChessGame(
+            whiteAugment, blackAugment, recycleRuleEnabled, mannersRuleEnabled, crownRuleEnabled, transcendRuleEnabled
+        )
         generation++
         lastMove = null
         inputEnabled = true

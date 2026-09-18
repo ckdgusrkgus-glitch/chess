@@ -53,6 +53,45 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent" />
 
+        <CheckBox
+            android:id="@+id/mannersCheckBox"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="16dp"
+            android:text="@string/manners_rule_toggle"
+            android:textColor="@color/text_primary"
+            app:layout_constraintTop_toBottomOf="@id/recycleCheckBox"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <CheckBox
+            android:id="@+id/crownCheckBox"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="16dp"
+            android:text="@string/crown_rule_toggle"
+            android:textColor="@color/text_primary"
+            app:layout_constraintTop_toBottomOf="@id/mannersCheckBox"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <CheckBox
+            android:id="@+id/transcendCheckBox"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="16dp"
+            android:text="@string/transcend_rule_toggle"
+            android:textColor="@color/text_primary"
+            app:layout_constraintTop_toBottomOf="@id/crownCheckBox"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
         <com.google.android.material.button.MaterialButton
             android:id="@+id/draftBackButton"
             android:layout_width="0dp"
@@ -65,7 +104,7 @@
             android:textColor="@color/text_primary"
             app:backgroundTint="@color/panel_bg"
             app:cornerRadius="10dp"
-            app:layout_constraintTop_toBottomOf="@id/recycleCheckBox"
+            app:layout_constraintTop_toBottomOf="@id/transcendCheckBox"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintBottom_toBottomOf="parent" />
