@@ -58,6 +58,15 @@
     <string name="review_prev">이전</string>
     <string name="review_next">다음</string>
     <string name="review_analyzing">분석 중…</string>
+    <string name="review_community_stats">커뮤니티 통계 보기</string>
+
+    <string name="community_stats_title">커뮤니티 통계</string>
+    <string name="community_stats_loading">불러오는 중…</string>
+    <string name="community_stats_error">데이터를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.</string>
+    <string name="community_stats_empty">이 상황에 대한 데이터가 없습니다.</string>
+    <string name="community_stats_total">총 %1$s경기</string>
+    <string name="community_stats_move_label">%1$d. %2$s</string>
+    <string name="community_stats_move_detail">%1$d%% · %2$s경기</string>
 
     <string name="mate_line_title">AI가 찾은 메이트</string>
     <string name="mate_line_finding">메이트 라인을 찾는 중…</string>

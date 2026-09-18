@@ -42,6 +42,7 @@ class ReviewActivity : AppCompatActivity() {
     private lateinit var aiSuggestionText: TextView
     private lateinit var prevButton: MaterialButton
     private lateinit var nextButton: MaterialButton
+    private lateinit var communityStatsButton: MaterialButton
 
     private lateinit var record: GameRecord
     private var currentIndex = 0
@@ -79,7 +80,15 @@ class ReviewActivity : AppCompatActivity() {
         aiSuggestionText = findViewById(R.id.aiSuggestionText)
         prevButton = findViewById(R.id.prevButton)
         nextButton = findViewById(R.id.nextButton)
+        communityStatsButton = findViewById(R.id.communityStatsButton)
         findViewById<MaterialButton>(R.id.backButton).setOnClickListener { finish() }
+
+        communityStatsButton.setOnClickListener {
+            val intent = Intent(this, CommunityStatsActivity::class.java)
+            intent.putStringArrayListExtra(CommunityStatsActivity.EXTRA_REPLAY_MOVES, ArrayList(record.moves.subList(0, currentIndex)))
+            intent.putExtra(CommunityStatsActivity.EXTRA_FLIPPED, boardView.flipped)
+            startActivity(intent)
+        }
 
         prevButton.setOnClickListener {
             if (currentIndex > 0) {
