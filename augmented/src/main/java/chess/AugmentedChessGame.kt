@@ -1,5 +1,6 @@
 package chess
 
+import chess.augment.MiddleAugment
 import chess.augment.OpeningAugment
 
 /**
@@ -31,11 +32,24 @@ class AugmentedChessGame(
         promotionRank = { color ->
             augmentFor(color)?.promotionRankOverride?.invoke(color) ?: AugmentRules.STANDARD.promotionRank(color)
         },
-        promotionChoices = { color -> resolvePromotionChoices(color) }
+        promotionChoices = { color -> resolvePromotionChoices(color) },
+        pawnCanRetreat = { color -> middlePawnRetreat[color] == true },
+        kingHasKnightMoves = { color -> middleKingKnight[color] == true }
     )
 
-    /** Total plies (half-moves) played since [resetBoard] — 존버's 14-ply timer counts against this. */
-    private var plyCount = 0
+    /** Total plies (half-moves) played since [resetBoard] — 존버's 14-ply timer, and the middle-augment
+     *  draft trigger, both count against this. */
+    var plyCount = 0
+        private set
+
+    /** Which sides have been granted each 미들 증강 (middle augment) effect so far this game — see
+     *  [applyMiddleAugment]. Unlike an opening augment (one pick per side, applied at setup), a
+     *  middle augment is granted mid-game, so these start empty and can only ever be added to. */
+    private val middlePawnRetreat = mutableMapOf<Color, Boolean>()
+    private val middleKingKnight = mutableMapOf<Color, Boolean>()
+
+    /** Whether this game's single middle-augment draft (see [isMiddleDraftDue]) has already been offered. */
+    private var middleDraftOffered = false
 
     /** One entry per side that drafted 존버, tracking where that pawn currently is. Removed the
      *  moment it's captured, promoted some other way, or its 14-ply timer fires. */
@@ -73,6 +87,32 @@ class AugmentedChessGame(
         turtlingWatches.clear()
         whiteAugment?.turtlingFile?.let { turtlingWatches += TurtlingWatch(Color.WHITE, Square(it, 1)) }
         blackAugment?.turtlingFile?.let { turtlingWatches += TurtlingWatch(Color.BLACK, Square(it, 6)) }
+
+        middlePawnRetreat.clear()
+        middleKingKnight.clear()
+        middleDraftOffered = false
+    }
+
+    /**
+     * Whether the (single, per-game) 미들 증강 draft should be offered now. True exactly once per
+     * game, the first time [plyCount] reaches [MIDDLE_DRAFT_PLY], until [markMiddleDraftOffered] is
+     * called.
+     *
+     * The source material doesn't say how many plies apart middle-augment drafts actually occur in
+     * the original game (docs/augmented-chess-design.md flags this as an open question) — this is a
+     * documented assumption (one draft per game, at ply 10), not a sourced fact, and should be
+     * revisited once that's confirmed.
+     */
+    fun isMiddleDraftDue(): Boolean = !middleDraftOffered && plyCount >= MIDDLE_DRAFT_PLY
+
+    fun markMiddleDraftOffered() {
+        middleDraftOffered = true
+    }
+
+    /** Grants [color] the effect(s) of [augment] for the rest of this game. */
+    fun applyMiddleAugment(augment: MiddleAugment, color: Color) {
+        if (augment.grantsPawnRetreat) middlePawnRetreat[color] = true
+        if (augment.grantsKingKnightMoves) middleKingKnight[color] = true
     }
 
     /** Every geometrically legal move for the side to move. Unlike a check-filtered "legal moves"
@@ -145,6 +185,7 @@ class AugmentedChessGame(
 
     companion object {
         private const val TURTLING_TRIGGER_PLIES = 14
+        const val MIDDLE_DRAFT_PLY = 10
     }
 }
 

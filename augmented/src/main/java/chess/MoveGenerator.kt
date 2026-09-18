@@ -10,7 +10,7 @@ object MoveGenerator {
             PieceType.BISHOP -> slidingMoves(board, from, piece.color, DIAGONAL_DIRS)
             PieceType.ROOK -> slidingMoves(board, from, piece.color, STRAIGHT_DIRS)
             PieceType.QUEEN -> slidingMoves(board, from, piece.color, DIAGONAL_DIRS + STRAIGHT_DIRS)
-            PieceType.KING -> kingMoves(board, from, piece.color)
+            PieceType.KING -> kingMoves(board, from, piece.color, rules)
         }
     }
 
@@ -57,6 +57,24 @@ object MoveGenerator {
                 addPawnMove(moves, from, capSq, promotionRank, promotionChoices)
             } else if (target == null && capSq == board.enPassantTarget) {
                 moves.add(Move(from, capSq, isEnPassant = true))
+            }
+        }
+
+        // 퇴각 (Retreat): this side's pawns may also step or capture one square backward.
+        // No two-square backward move and no backward en passant — the source material only
+        // describes a single backward step/diagonal capture, mirroring the forward move shape.
+        if (rules.pawnCanRetreat(color)) {
+            val backStep = from.offset(0, -dir)
+            if (backStep.isValid && board.pieceAt(backStep) == null) {
+                addPawnMove(moves, from, backStep, promotionRank, promotionChoices)
+            }
+            for (df in intArrayOf(-1, 1)) {
+                val capSq = from.offset(df, -dir)
+                if (!capSq.isValid) continue
+                val target = board.pieceAt(capSq)
+                if (target != null && target.color != color) {
+                    addPawnMove(moves, from, capSq, promotionRank, promotionChoices)
+                }
             }
         }
         return moves
@@ -108,7 +126,7 @@ object MoveGenerator {
         return moves
     }
 
-    private fun kingMoves(board: Board, from: Square, color: Color): List<Move> {
+    private fun kingMoves(board: Board, from: Square, color: Color, rules: AugmentRules): List<Move> {
         val moves = mutableListOf<Move>()
         for (df in -1..1) for (dr in -1..1) {
             if (df == 0 && dr == 0) continue
@@ -116,6 +134,17 @@ object MoveGenerator {
             if (to.isValid) {
                 val target = board.pieceAt(to)
                 if (target == null || target.color != color) moves.add(Move(from, to))
+            }
+        }
+
+        // 승마 (Cavalry): this side's king can also jump like a knight, on top of its normal steps.
+        if (rules.kingHasKnightMoves(color)) {
+            for ((df, dr) in KNIGHT_OFFSETS) {
+                val to = from.offset(df, dr)
+                if (to.isValid) {
+                    val target = board.pieceAt(to)
+                    if (target == null || target.color != color) moves.add(Move(from, to))
+                }
             }
         }
 

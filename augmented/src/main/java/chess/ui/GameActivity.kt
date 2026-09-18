@@ -9,6 +9,7 @@ import chess.Color
 import chess.Move
 import chess.PieceType
 import chess.Square
+import chess.augment.MiddleAugments
 import chess.augment.OpeningAugments
 import com.ckdgusrkgus.augmentedchess.R
 import com.google.android.material.button.MaterialButton
@@ -44,7 +45,33 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
         return if (augmentName != null) getString(R.string.label_with_augment, base, augmentName) else base
     }
 
-    override fun onMoveMade(move: Move) {}
+    override fun onMoveMade(move: Move) {
+        if (boardView.game.isMiddleDraftDue()) {
+            boardView.game.markMiddleDraftOffered()
+            showMiddleAugmentDraft(Color.WHITE)
+        }
+    }
+
+    /**
+     * Shows the one-time "미들 증강" (middle augment) draft for [color], then Black's in turn once
+     * White has picked. When to trigger this at all is [chess.AugmentedChessGame.isMiddleDraftDue]'s
+     * assumption (ply 10, once per game) — see its doc comment for why that's an assumption rather
+     * than a sourced rule.
+     */
+    private fun showMiddleAugmentDraft(color: Color) {
+        if (isFinishing || isDestroyed) return
+        val augments = MiddleAugments.ALL
+        val options = augments.map { getString(R.string.draft_card_format, it.displayName, it.description) }.toTypedArray()
+        val titleRes = if (color == Color.WHITE) R.string.middle_draft_pick_white else R.string.middle_draft_pick_black
+        AlertDialog.Builder(this)
+            .setTitle(titleRes)
+            .setCancelable(false)
+            .setItems(options) { _, which ->
+                boardView.game.applyMiddleAugment(augments[which], color)
+                if (color == Color.WHITE) showMiddleAugmentDraft(Color.BLACK)
+            }
+            .show()
+    }
 
     override fun onStatusChanged(status: AugmentedGameStatus, sideToMove: Color, inCheck: Boolean) {
         val resultText = when (status) {
