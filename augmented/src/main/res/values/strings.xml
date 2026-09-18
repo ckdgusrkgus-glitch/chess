@@ -34,5 +34,7 @@
     <string name="back">뒤로</string>
     <string name="draft_pick_white">백의 오프닝 증강을 선택하세요</string>
     <string name="draft_pick_black">흑의 오프닝 증강을 선택하세요</string>
+    <string name="draft_pick_turtling_file">지정할 폰의 파일을 선택하세요</string>
     <string name="draft_card_format">%1$s\n%2$s</string>
+    <string name="recycle_rule_toggle">재활용 규칙 적용 (양측 공통: 폰은 이미 잡힌 아군 기물로만 프로모션 가능)</string>
 </resources>

@@ -21,5 +21,7 @@ data class OpeningAugment(
     val cost: Float,
     val setupTransform: (Board, Color) -> Unit = { _, _ -> },
     val promotionRankOverride: ((Color) -> Int)? = null,
-    val promotionChoicesOverride: ((Color) -> List<PieceType>)? = null
+    val promotionChoicesOverride: ((Color) -> List<PieceType>)? = null,
+    /** Set only for 존버 (Turtling): the file (0=a..7=h) of the pawn to watch — see [chess.AugmentedChessGame]'s turtling bookkeeping. */
+    val turtlingFile: Int? = null
 )

@@ -3,6 +3,7 @@ package chess.ui
 import android.content.Intent
 import android.os.Bundle
 import android.view.ViewGroup
+import android.widget.CheckBox
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -16,11 +17,16 @@ import com.google.android.material.button.MaterialButton
  * Lets White, then Black, each pick one "오프닝 증강" (opening augment) before the game starts —
  * matching the source game's rule that this category is drafted once, automatically applied at
  * the start of the game, independently per side.
+ *
+ * Also carries the one "규칙 증강" (rule augment) implemented so far, 재활용 (Recycle): unlike an
+ * opening augment, a rule augment applies identically to both sides regardless of who drafts what,
+ * so it's a single checkbox here rather than something either side picks.
  */
 class AugmentDraftActivity : AppCompatActivity() {
 
     private lateinit var titleText: TextView
     private lateinit var cardsContainer: LinearLayout
+    private lateinit var recycleCheckBox: CheckBox
 
     private var currentColor = Color.WHITE
     private var whitePick: OpeningAugment? = null
@@ -31,6 +37,7 @@ class AugmentDraftActivity : AppCompatActivity() {
 
         titleText = findViewById(R.id.draftTitleText)
         cardsContainer = findViewById(R.id.draftCardsContainer)
+        recycleCheckBox = findViewById(R.id.recycleCheckBox)
         findViewById<MaterialButton>(R.id.draftBackButton).setOnClickListener { finish() }
 
         showCandidatesFor(Color.WHITE)
@@ -54,6 +61,30 @@ class AugmentDraftActivity : AppCompatActivity() {
     }
 
     private fun onPicked(augment: OpeningAugment) {
+        if (augment.id == OpeningAugments.TURTLING_TEMPLATE.id) {
+            showFilePickerFor()
+            return
+        }
+        finalizePick(augment)
+    }
+
+    /** 존버 needs a target file the player chooses, unlike every other opening augment here. */
+    private fun showFilePickerFor() {
+        titleText.text = getString(R.string.draft_pick_turtling_file)
+        cardsContainer.removeAllViews()
+        for (file in 0..7) {
+            val button = MaterialButton(this).apply {
+                text = ('a' + file).toString()
+                isAllCaps = false
+            }
+            button.setOnClickListener { finalizePick(OpeningAugments.turtling(file)) }
+            val params = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            params.topMargin = dpToPx(10)
+            cardsContainer.addView(button, params)
+        }
+    }
+
+    private fun finalizePick(augment: OpeningAugment) {
         if (currentColor == Color.WHITE) {
             whitePick = augment
             showCandidatesFor(Color.BLACK)
@@ -61,6 +92,7 @@ class AugmentDraftActivity : AppCompatActivity() {
             val intent = Intent(this, GameActivity::class.java)
             intent.putExtra(GameActivity.EXTRA_WHITE_AUGMENT, whitePick?.id)
             intent.putExtra(GameActivity.EXTRA_BLACK_AUGMENT, augment.id)
+            intent.putExtra(GameActivity.EXTRA_RECYCLE_RULE, recycleCheckBox.isChecked)
             startActivity(intent)
             finish()
         }

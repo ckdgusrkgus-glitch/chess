@@ -9,9 +9,10 @@ import chess.Square
  * The Tier 1 opening augments from docs/augmented-chess-design.md's rollout plan: pure static
  * setup/parameter changes, needing no new piece kind and no per-turn status-effect tracking.
  *
- * Still left out of this batch, and why: 존버 / 재활용 need a "designate a specific pawn" or "track
- * captured pieces per side" mechanism this milestone doesn't build yet. (부정출발 was too, until
- * chess.Board grew configurable castling home squares — see [FALSE_START].)
+ * 존버 (Turtling) is the one exception that isn't purely static: it needs [chess.AugmentedChessGame]
+ * to track a specific pawn across the whole game and act 14 plies later. [turtling] is a factory
+ * rather than a fixed constant because *which* pawn is picked per draft — see
+ * [chess.ui.AugmentDraftActivity]'s file-picker step for it.
  */
 object OpeningAugments {
 
@@ -78,7 +79,38 @@ object OpeningAugments {
         }
     )
 
-    val ALL: List<OpeningAugment> = listOf(QUEENS_CAVALRY, EARLY_PROMOTION, HASTY_PROMOTION, FALSE_START)
+    const val TURTLING_ID_PREFIX = "turtling_"
 
-    fun byId(id: String?): OpeningAugment? = ALL.find { it.id == id }
+    /** Builds a 존버 pick for the pawn on [file] (0=a..7=h). The file is only known once the
+     *  player picks it in the draft's second step, so unlike the other augments this isn't a
+     *  fixed constant. */
+    fun turtling(file: Int): OpeningAugment = OpeningAugment(
+        id = "$TURTLING_ID_PREFIX$file",
+        displayName = "존버 (${'a' + file}파일)",
+        description = "${'a' + file}파일의 폰이 14수 이후에도 살아있다면 즉시 퀸으로 프로모션합니다.",
+        cost = 3f,
+        turtlingFile = file
+    )
+
+    /** Placeholder shown in the draft list before a file is picked — [chess.ui.AugmentDraftActivity]
+     *  intercepts a tap on this one and asks for a file instead of using it directly. */
+    val TURTLING_TEMPLATE = OpeningAugment(
+        id = "${TURTLING_ID_PREFIX}template",
+        displayName = "존버",
+        description = "폰 하나를 지정합니다. 14수 이후에도 살아있다면 즉시 퀸으로 프로모션합니다.",
+        cost = 3f
+    )
+
+    private val STATIC: List<OpeningAugment> = listOf(QUEENS_CAVALRY, EARLY_PROMOTION, HASTY_PROMOTION, FALSE_START)
+
+    val ALL: List<OpeningAugment> = STATIC + TURTLING_TEMPLATE
+
+    fun byId(id: String?): OpeningAugment? {
+        if (id == null) return null
+        if (id.startsWith(TURTLING_ID_PREFIX) && id != TURTLING_TEMPLATE.id) {
+            val file = id.removePrefix(TURTLING_ID_PREFIX).toIntOrNull() ?: return null
+            return turtling(file)
+        }
+        return STATIC.find { it.id == id }
+    }
 }

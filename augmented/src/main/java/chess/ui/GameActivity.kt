@@ -28,11 +28,12 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
 
         val whiteAugment = OpeningAugments.byId(intent.getStringExtra(EXTRA_WHITE_AUGMENT))
         val blackAugment = OpeningAugments.byId(intent.getStringExtra(EXTRA_BLACK_AUGMENT))
+        val recycleRuleEnabled = intent.getBooleanExtra(EXTRA_RECYCLE_RULE, false)
         findViewById<TextView>(R.id.topLabel).text = sideLabel(R.string.label_black, blackAugment?.displayName)
         findViewById<TextView>(R.id.bottomLabel).text = sideLabel(R.string.label_white, whiteAugment?.displayName)
 
         boardView.listener = this
-        boardView.configureAugments(whiteAugment, blackAugment)
+        boardView.configureAugments(whiteAugment, blackAugment, recycleRuleEnabled)
 
         findViewById<MaterialButton>(R.id.resignButton).setOnClickListener { confirmResign() }
         findViewById<MaterialButton>(R.id.newGameButton).setOnClickListener { boardView.newGame() }
@@ -97,5 +98,6 @@ class GameActivity : AppCompatActivity(), ChessBoardView.Listener {
     companion object {
         const val EXTRA_WHITE_AUGMENT = "chess.ui.EXTRA_WHITE_AUGMENT"
         const val EXTRA_BLACK_AUGMENT = "chess.ui.EXTRA_BLACK_AUGMENT"
+        const val EXTRA_RECYCLE_RULE = "chess.ui.EXTRA_RECYCLE_RULE"
     }
 }

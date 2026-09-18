@@ -16,11 +16,14 @@ import chess.augment.OpeningAugment
  *
  * [whiteAugment]/[blackAugment] are each side's drafted "오프닝 증강" (opening augment, see
  * [OpeningAugment]), applied once per [resetBoard] call and reflected for the rest of that game in
- * [rules].
+ * [rules]. [recycleRuleEnabled] turns on "재활용" (Recycle), a "규칙 증강" (rule augment) that — unlike
+ * opening augments — applies identically to both sides regardless of what they drafted, so it's a
+ * separate flag rather than something either side picks.
  */
 class AugmentedChessGame(
     private val whiteAugment: OpeningAugment? = null,
-    private val blackAugment: OpeningAugment? = null
+    private val blackAugment: OpeningAugment? = null,
+    private val recycleRuleEnabled: Boolean = false
 ) {
     val board = Board()
 
@@ -28,10 +31,21 @@ class AugmentedChessGame(
         promotionRank = { color ->
             augmentFor(color)?.promotionRankOverride?.invoke(color) ?: AugmentRules.STANDARD.promotionRank(color)
         },
-        promotionChoices = { color ->
-            augmentFor(color)?.promotionChoicesOverride?.invoke(color) ?: AugmentRules.STANDARD.promotionChoices(color)
-        }
+        promotionChoices = { color -> resolvePromotionChoices(color) }
     )
+
+    /** Total plies (half-moves) played since [resetBoard] — 존버's 14-ply timer counts against this. */
+    private var plyCount = 0
+
+    /** One entry per side that drafted 존버, tracking where that pawn currently is. Removed the
+     *  moment it's captured, promoted some other way, or its 14-ply timer fires. */
+    private class TurtlingWatch(val color: Color, var square: Square)
+    private val turtlingWatches = mutableListOf<TurtlingWatch>()
+
+    /** How many of each piece type each color has had captured — 재활용's "already lost" credits. */
+    private val capturedCounts = mutableMapOf<Color, MutableMap<PieceType, Int>>()
+    /** How many of those credits each color has already spent on a promotion. */
+    private val usedPromotionCounts = mutableMapOf<Color, MutableMap<PieceType, Int>>()
 
     init {
         resetBoard()
@@ -39,11 +53,26 @@ class AugmentedChessGame(
 
     private fun augmentFor(color: Color): OpeningAugment? = if (color == Color.WHITE) whiteAugment else blackAugment
 
-    /** Resets to the standard starting position, then re-applies each side's opening augment. */
+    private fun resolvePromotionChoices(color: Color): List<PieceType> {
+        val base = augmentFor(color)?.promotionChoicesOverride?.invoke(color) ?: AugmentRules.STANDARD.promotionChoices(color)
+        if (!recycleRuleEnabled) return base
+        val captured = capturedCounts[color].orEmpty()
+        val used = usedPromotionCounts[color].orEmpty()
+        return base.filter { type -> (captured[type] ?: 0) > (used[type] ?: 0) }
+    }
+
+    /** Resets to the standard starting position, re-applies each side's opening augment, and clears all per-game tracking. */
     fun resetBoard() {
         board.setup()
         whiteAugment?.setupTransform?.invoke(board, Color.WHITE)
         blackAugment?.setupTransform?.invoke(board, Color.BLACK)
+
+        plyCount = 0
+        capturedCounts.clear()
+        usedPromotionCounts.clear()
+        turtlingWatches.clear()
+        whiteAugment?.turtlingFile?.let { turtlingWatches += TurtlingWatch(Color.WHITE, Square(it, 1)) }
+        blackAugment?.turtlingFile?.let { turtlingWatches += TurtlingWatch(Color.BLACK, Square(it, 6)) }
     }
 
     /** Every geometrically legal move for the side to move. Unlike a check-filtered "legal moves"
@@ -74,8 +103,48 @@ class AugmentedChessGame(
         if (candidates.isEmpty()) return null
         val move = if (candidates.size == 1) candidates[0]
         else candidates.find { it.promotion == (promotion ?: PieceType.QUEEN) } ?: candidates.first()
+
+        // Captured-for-en-passant lands on a different square than `move.to`, so it has to be read
+        // off the board before applyMove clears it, same as the direct-capture case.
+        val captured = if (move.isEnPassant) board.pieceAt(Square(move.to.file, move.from.rank)) else board.pieceAt(move.to)
+
         board.applyMove(move)
+        onMoveApplied(move, captured)
         return move
+    }
+
+    private fun onMoveApplied(move: Move, captured: Piece?) {
+        plyCount++
+
+        if (captured != null) {
+            val counts = capturedCounts.getOrPut(captured.color) { mutableMapOf() }
+            counts[captured.type] = (counts[captured.type] ?: 0) + 1
+        }
+        if (move.promotion != null) {
+            val promotedColor = board.pieceAt(move.to)?.color
+            if (promotedColor != null) {
+                val used = usedPromotionCounts.getOrPut(promotedColor) { mutableMapOf() }
+                used[move.promotion] = (used[move.promotion] ?: 0) + 1
+            }
+        }
+
+        for (watch in turtlingWatches) {
+            if (watch.square == move.from) watch.square = move.to
+        }
+        // Drops a watch the moment its square no longer holds that color's pawn — captured, or
+        // already promoted some other way (e.g. it reached the normal promotion rank early).
+        turtlingWatches.removeAll { watch ->
+            val piece = board.pieceAt(watch.square)
+            piece == null || piece.type != PieceType.PAWN || piece.color != watch.color
+        }
+        if (plyCount >= TURTLING_TRIGGER_PLIES && turtlingWatches.isNotEmpty()) {
+            turtlingWatches.forEach { board.squares[it.square.index] = Piece(PieceType.QUEEN, it.color) }
+            turtlingWatches.clear()
+        }
+    }
+
+    companion object {
+        private const val TURTLING_TRIGGER_PLIES = 14
     }
 }
 
