@@ -1,0 +1,41 @@
+# Chess Uno 웹 게임을 GitHub Pages(정적 파일 무료 호스팅)에 배포한다.
+# 동작 조건: 저장소 Settings → Pages → Source 를 "GitHub Actions"로 바꿔야 한다. 그 전에는 이 워크플로가 실패할 뿐 아무것도 공개되지 않는다.
+name: Deploy Chess Uno to GitHub Pages
+
+on:
+  push:
+    branches: [claude/chess-game-code-cchc4s]
+    paths:
+      - 'web/chess-uno/**'
+      - '.github/workflows/chess-uno-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build single-file site
+        run: |
+          node web/chess-uno/build.js
+          node web/chess-uno/test/engine.test.js
+          mkdir _site
+          cp web/chess-uno/index.html _site/index.html
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
