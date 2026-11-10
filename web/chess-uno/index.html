@@ -1,0 +1,876 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+</head>
+<body style="margin:0">
+<title>Chess Uno</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* 레이아웃: 왼쪽에 보드(위아래 플레이어 바), 오른쪽에 카드·상태·기록 패널. 좁은 화면에서는 세로로 쌓임. 다크 단일 테마. */
+:root {
+  color-scheme: dark;
+  --bg: #2b2926;
+  --panel: #211f1d;
+  --panel-2: #383532;
+  --line: #45413d;
+  --fg: #f1efea;
+  --muted: #a39e96;
+  --light-sq: #ecedd1;
+  --dark-sq: #739552;
+  --accent: #81b64c;
+  --accent-deep: #5d9948;
+  --hl: rgba(255, 235, 59, 0.5);
+  --danger: #e0503c;
+  --c-red: #d8443a; --c-yellow: #e9b72c; --c-green: #4f9d3f; --c-blue: #3478c9; --c-wild: #1b1a19;
+  --sq: min(11.4vw, calc((100vh - 190px) / 8), 86px);
+  --font: "Segoe UI", system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { min-height: 100%; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 15px; line-height: 1.5;
+  padding-block: 16px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+button { font: inherit; color: inherit; cursor: pointer; border: 0; }
+button:focus-visible, .sq:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+.app { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; align-items: flex-start; }
+.board-col { display: flex; flex-direction: column; gap: 8px; width: calc(var(--sq) * 8); max-width: 100%; }
+
+.player { display: flex; align-items: center; gap: 10px; min-height: 40px; }
+.avatar { width: 36px; height: 36px; border-radius: 4px; background-color: var(--panel-2); background-size: 86%; background-position: center; background-repeat: no-repeat; flex: none; }
+.player .who { font-weight: 700; }
+.player .taken { display: flex; flex-wrap: wrap; min-width: 0; flex: 1; }
+.player .taken i { width: 20px; height: 20px; margin-right: -7px; background-size: contain; background-repeat: no-repeat; }
+.badge { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.badge.turn { background: var(--accent); color: #17250b; }
+.badge.pen { background: var(--danger); color: #fff; }
+
+.board-wrap { position: relative; }
+.board { display: grid; grid-template-columns: repeat(8, 1fr); width: 100%; aspect-ratio: 1; border-radius: 4px; overflow: hidden; user-select: none; -webkit-user-select: none; }
+.sq { position: relative; padding: 0; background: var(--light-sq); border-radius: 0; }
+.sq.dk { background: var(--dark-sq); }
+.sq.hi::before, .sq.sel::before { content: ""; position: absolute; inset: 0; background: var(--hl); }
+.sq.chk::before { content: ""; position: absolute; inset: 0; background: radial-gradient(circle, rgba(224, 60, 40, .95) 0%, rgba(224, 60, 40, .6) 45%, transparent 72%); }
+.sq .pc { position: absolute; inset: 0; background-size: 100%; background-repeat: no-repeat; }
+.sq.can::after { content: ""; position: absolute; left: 34%; top: 34%; width: 32%; height: 32%; border-radius: 50%; background: rgba(0, 0, 0, .2); }
+.sq.can.cap::after { left: 0; top: 0; width: 100%; height: 100%; background: none; border: calc(var(--sq) * .09) solid rgba(0, 0, 0, .2); }
+.sq .co { position: absolute; font-size: calc(var(--sq) * .2); font-weight: 700; line-height: 1; color: var(--dark-sq); pointer-events: none; }
+.sq.dk .co { color: var(--light-sq); }
+.sq .co.rk { left: 4%; top: 5%; }
+.sq .co.fl { right: 5%; bottom: 4%; }
+.sq.mine { cursor: pointer; }
+
+.overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, .55); border-radius: 4px; z-index: 5; }
+.dialog { background: var(--panel); border-radius: 10px; padding: 20px 24px; text-align: center; max-width: 86%; box-shadow: 0 10px 40px rgba(0, 0, 0, .5); }
+.dialog h2 { margin: 0 0 4px; font-size: 24px; }
+.dialog p { margin: 0 0 16px; color: var(--muted); }
+.promo { display: flex; gap: 8px; justify-content: center; }
+.promo button { width: calc(var(--sq) * 1.05); height: calc(var(--sq) * 1.05); background-color: var(--panel-2); border-radius: 8px; background-size: 90%; background-position: center; background-repeat: no-repeat; }
+.promo button:hover { background-color: var(--line); }
+
+.side { width: 340px; max-width: 100%; flex: 1 1 300px; background: var(--panel); border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; }
+.side header { padding: 12px 16px; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--line); }
+.side h1 { margin: 0; font-size: 20px; letter-spacing: .2px; }
+.side header span { color: var(--muted); font-size: 13px; }
+.sec { padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.status { font-size: 17px; font-weight: 700; }
+.status small { display: block; font-size: 13px; font-weight: 400; color: var(--muted); min-height: 20px; }
+.pips { display: flex; gap: 6px; margin-top: 10px; min-height: 14px; flex-wrap: wrap; }
+.pips i { width: 22px; height: 10px; border-radius: 3px; background: var(--accent); }
+.pips i.used { background: var(--line); }
+
+.table { display: flex; gap: 14px; align-items: center; }
+.card { width: 78px; height: 112px; border-radius: 10px; border: 4px solid #fff; display: flex; align-items: center; justify-content: center; font-size: 40px; font-weight: 800; color: #fff; text-shadow: 0 2px 0 rgba(0, 0, 0, .35); flex: none; position: relative; }
+.card.red { background: var(--c-red); } .card.yellow { background: var(--c-yellow); } .card.green { background: var(--c-green); } .card.blue { background: var(--c-blue); }
+.card.wild { background: var(--c-wild); font-size: 26px; }
+.card.wild::before { content: ""; position: absolute; inset: 14px 8px; border-radius: 50%; background: conic-gradient(var(--c-red) 0 25%, var(--c-blue) 0 50%, var(--c-green) 0 75%, var(--c-yellow) 0); opacity: .9; transform: rotate(20deg); }
+.card span { position: relative; }
+.card.sm { font-size: 24px; }
+.card.dim { opacity: .35; }
+.card.new { animation: deal .22s ease-out; }
+@keyframes deal { from { transform: translateX(-40px) rotate(-8deg); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .card.new { animation: none; } }
+.deck { background: var(--c-wild); border-color: var(--line); color: var(--muted); font-size: 13px; font-weight: 700; text-shadow: none; flex-direction: column; gap: 4px; box-shadow: 3px 3px 0 var(--panel-2), 6px 6px 0 var(--line); }
+.deck b { font-size: 22px; color: var(--fg); }
+.deck.live { border-color: var(--accent); color: var(--fg); animation: pulse 1.4s ease-in-out infinite; }
+.deck.live:hover { background: #2a2826; }
+.deck:disabled { cursor: default; }
+@keyframes pulse { 50% { box-shadow: 3px 3px 0 var(--panel-2), 6px 6px 0 var(--line), 0 0 0 5px rgba(129, 182, 76, .35); } }
+@media (prefers-reduced-motion: reduce) { .deck.live { animation: none; } }
+.drawn { display: flex; gap: 8px; min-width: 0; }
+.empty-card { width: 78px; height: 112px; border-radius: 10px; border: 2px dashed var(--line); }
+.wildpick { display: flex; gap: 8px; margin-top: 12px; }
+.wildpick button { flex: 1; padding: 10px 0; font-size: 18px; font-weight: 800; background: var(--accent); color: #17250b; border-radius: 6px; box-shadow: 0 3px 0 var(--accent-deep); }
+.wildpick button:hover { filter: brightness(1.08); }
+
+.log { flex: 1; min-height: 120px; max-height: 230px; overflow-y: auto; padding: 8px 16px; font-size: 13px; border-bottom: 1px solid var(--line); }
+.log div { padding: 2px 0; color: var(--muted); }
+.log div.mv { color: var(--fg); padding-left: 12px; }
+.log div.win { color: var(--accent); font-weight: 700; }
+.foot { padding: 12px 16px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.btn { padding: 9px 16px; border-radius: 6px; background: var(--panel-2); font-weight: 700; }
+.btn:hover { background: var(--line); }
+.btn.primary { background: var(--accent); color: #17250b; box-shadow: 0 3px 0 var(--accent-deep); }
+.foot label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; }
+details { padding: 0 16px 14px; font-size: 13px; color: var(--muted); }
+details summary { cursor: pointer; color: var(--fg); font-weight: 700; padding: 4px 0; }
+details table { border-collapse: collapse; width: 100%; margin-top: 6px; }
+details td { padding: 4px 6px 4px 0; vertical-align: top; border-top: 1px solid var(--line); }
+details td:first-child { white-space: nowrap; color: var(--fg); font-weight: 700; }
+details ul { margin: 8px 0 0; padding-left: 18px; }
+.credit { font-size: 11px; color: var(--muted); text-align: center; margin-top: 14px; }
+.credit a { color: inherit; }
+.net { display: flex; flex-direction: column; gap: 8px; background: var(--panel-2); }
+.net .row { display: flex; gap: 8px; align-items: center; }
+.net input { flex: 1; min-width: 0; font: inherit; font-size: 13px; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; }
+.net .btn { background: var(--line); padding: 7px 12px; font-size: 13px; white-space: nowrap; }
+.net .btn:hover { filter: brightness(1.15); }
+.net .state { font-size: 13px; display: flex; align-items: center; gap: 8px; }
+.net .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+.net .dot.ok { background: var(--accent); }
+.net .dot.bad { background: var(--danger); }
+.net .dot.wait { background: var(--c-yellow); }
+.who small { font-weight: 400; color: var(--muted); }
+/* 기물 SVG: Colin M.L. Burnett (cburnett), CC BY-SA 3.0 */
+.pc.wp {
+  background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0NSIgaGVpZ2h0PSI0NSI+PHBhdGggZD0iTTIyLjUgOWMtMi4yMSAwLTQgMS43OS00IDQgMCAuODkuMjkgMS43MS43OCAyLjM4QzE3LjMzIDE2LjUgMTYgMTguNTkgMTYgMjFjMCAyLjAzLjk0IDMuODQgMi40MSA1LjAzLTMgMS4wNi03LjQxIDUuNTUtNy40MSAxMy40N2gyM2MwLTcuOTItNC40MS0xMi40MS03LjQxLTEzLjQ3IDEuNDctMS4xOSAyLjQxLTMgMi40MS01LjAzIDAtMi40MS0xLjMzLTQuNS0zLjI4LTUuNjIuNDktLjY3Ljc4LTEuNDkuNzgtMi4zOCAwLTIuMjEtMS43OS00LTQtNHoiIGZpbGw9IiNmZmYiIHN0cm9rZT0iIzAwMCIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjwvc3ZnPg==');
+}
+.pc.wb {
+  background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0NSIgaGVpZ2h0PSI0NSI+PGcgZmlsbD0ibm9uZSIgZmlsbC1ydWxlPSJldmVub2RkIiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxnIGZpbGw9IiNmZmYiIHN0cm9rZS1saW5lY2FwPSJidXR0Ij48cGF0aCBkPSJNOSAzNmMzLjM5LS45NyAxMC4xMS40MyAxMy41LTIgMy4zOSAyLjQzIDEwLjExIDEuMDMgMTMuNSAyIDAgMCAxLjY1LjU0IDMgMi0uNjguOTctMS42NS45OS0zIC41LTMuMzktLjk3LTEwLjExLjQ2LTEzLjUtMS0zLjM5IDEuNDYtMTAuMTEuMDMtMTMuNSAxLTEuMzU0LjQ5LTIuMzIzLjQ3LTMtLjUgMS4zNTQtMS45NCAzLTIgMy0yeiIvPjxwYXRoIGQ9Ik0xNSAzMmMyLjUgMi41IDEyLjUgMi41IDE1IDAgLjUtMS41IDAtMiAwLTIgMC0yLjUtMi41LTQtMi41LTQgNS41LTEuNSA2LTExLjUtNS0xNS41LTExIDQtMTAuNSAxNC01IDE1LjUgMCAwLTIuNSAxLjUtMi41IDQgMCAwLS41LjUgMCAyeiIvPjxwYXRoIGQ9Ik0yNSA4YTIuNSAyLjUgMCAxIDEtNSAwIDIuNSAyLjUgMCAxIDEgNSAweiIvPjwvZz48cGF0aCBkPSJNMTcuNSAyNmgxME0xNSAzMGgxNW0tNy41LTE0LjV2NU0yMCAxOGg1IiBzdHJva2UtbGluZWpvaW49Im1pdGVyIi8+PC9nPjwvc3ZnPg==');
+}
+.pc.wn {
+  background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0NSIgaGVpZ2h0PSI0NSI+PGcgZmlsbD0ibm9uZSIgZmlsbC1ydWxlPSJldmVub2RkIiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik0yMiAxMGMxMC41IDEgMTYuNSA4IDE2IDI5SDE1YzAtOSAxMC02LjUgOC0yMSIgZmlsbD0iI2ZmZiIvPjxwYXRoIGQ9Ik0yNCAxOGMuMzggMi45MS01LjU1IDcuMzctOCA5LTMgMi0yLjgyIDQuMzQtNSA0LTEuMDQyLS45NCAxLjQxLTMuMDQgMC0zLTEgMCAuMTkgMS4yMy0xIDItMSAwLTQuMDAzIDEtNC00IDAtMiA2LTEyIDYtMTJzMS44OS0xLjkgMi0zLjVjLS43My0uOTk0LS41LTItLjUtMyAxLTEgMyAyLjUgMyAyLjVoMnMuNzgtMS45OTIgMi41LTNjMSAwIDEgMyAxIDMiIGZpbGw9IiNmZmYiLz48cGF0aCBkPSJNOS41IDI1LjVhLjUuNSAwIDEgMS0xIDAgLjUuNSAwIDEgMSAxIDB6bTUuNDMzLTkuNzVhLjUgMS41IDMwIDEgMS0uODY2LS41LjUgMS41IDMwIDEgMSAuODY2LjV6IiBmaWxsPSIjMDAwIi8+PC9nPjwvc3ZnPg==');
+}
+.pc.wr {
+  background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0NSIgaGVpZ2h0PSI0NSI+PGcgZmlsbD0iI2ZmZiIgZmlsbC1ydWxlPSJldmVub2RkIiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik05IDM5aDI3di0zSDl2M3ptMy0zdi00aDIxdjRIMTJ6bS0xLTIyVjloNHYyaDVWOWg1djJoNVY5aDR2NSIgc3Ryb2tlLWxpbmVjYXA9ImJ1dHQiLz48cGF0aCBkPSJNMzQgMTRsLTMgM0gxNGwtMy0zIi8+PHBhdGggZD0iTTMxIDE3djEyLjVIMTRWMTciIHN0cm9rZS1saW5lY2FwPSJidXR0IiBzdHJva2UtbGluZWpvaW49Im1pdGVyIi8+PHBhdGggZD0iTTMxIDI5LjVsMS41IDIuNWgtMjBsMS41LTIuNSIvPjxwYXRoIGQ9Ik0xMSAxNGgyMyIgZmlsbD0ibm9uZSIgc3Ryb2tlLWxpbmVqb2luPSJtaXRlciIvPjwvZz48L3N2Zz4=');
+}
+.pc.wq {
+  background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0NSIgaGVpZ2h0PSI0NSI+PGcgZmlsbD0iI2ZmZiIgZmlsbC1ydWxlPSJldmVub2RkIiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik04IDEyYTIgMiAwIDEgMS00IDAgMiAyIDAgMSAxIDQgMHptMTYuNS00LjVhMiAyIDAgMSAxLTQgMCAyIDIgMCAxIDEgNCAwek00MSAxMmEyIDIgMCAxIDEtNCAwIDIgMiAwIDEgMSA0IDB6TTE2IDguNWEyIDIgMCAxIDEtNCAwIDIgMiAwIDEgMSA0IDB6TTMzIDlhMiAyIDAgMSAxLTQgMCAyIDIgMCAxIDEgNCAweiIvPjxwYXRoIGQ9Ik05IDI2YzguNS0xLjUgMjEtMS41IDI3IDBsMi0xMi03IDExVjExbC01LjUgMTMuNS0zLTE1LTMgMTUtNS41LTE0VjI1TDcgMTRsMiAxMnoiIHN0cm9rZS1saW5lY2FwPSJidXR0Ii8+PHBhdGggZD0iTTkgMjZjMCAyIDEuNSAyIDIuNSA0IDEgMS41IDEgMSAuNSAzLjUtMS41IDEtMS41IDIuNS0xLjUgMi41LTEuNSAxLjUuNSAyLjUuNSAyLjUgNi41IDEgMTYuNSAxIDIzIDAgMCAwIDEuNS0xIDAtMi41IDAgMCAuNS0xLjUtMS0yLjUtLjUtMi41LS41LTIgLjUtMy41IDEtMiAyLjUtMiAyLjUtNC04LjUtMS41LTE4LjUtMS41LTI3IDB6IiBzdHJva2UtbGluZWNhcD0iYnV0dCIvPjxwYXRoIGQ9Ik0xMS41IDMwYzMuNS0xIDE4LjUtMSAyMiAwTTEyIDMzLjVjNi0xIDE1LTEgMjEgMCIgZmlsbD0ibm9uZSIvPjwvZz48L3N2Zz4=');
+}
+.pc.wk {
+  background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0NSIgaGVpZ2h0PSI0NSI+PGcgZmlsbD0ibm9uZSIgZmlsbC1ydWxlPSJldmVub2RkIiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik0yMi41IDExLjYzVjZNMjAgOGg1IiBzdHJva2UtbGluZWpvaW49Im1pdGVyIi8+PHBhdGggZD0iTTIyLjUgMjVzNC41LTcuNSAzLTEwLjVjMCAwLTEtMi41LTMtMi41cy0zIDIuNS0zIDIuNWMtMS41IDMgMyAxMC41IDMgMTAuNSIgZmlsbD0iI2ZmZiIgc3Ryb2tlLWxpbmVjYXA9ImJ1dHQiIHN0cm9rZS1saW5lam9pbj0ibWl0ZXIiLz48cGF0aCBkPSJNMTEuNSAzN2M1LjUgMy41IDE1LjUgMy41IDIxIDB2LTdzOS00LjUgNi0xMC41Yy00LTYuNS0xMy41LTMuNS0xNiA0VjI3di0zLjVjLTMuNS03LjUtMTMtMTAuNS0xNi00LTMgNiA1IDEwIDUgMTBWMzd6IiBmaWxsPSIjZmZmIi8+PHBhdGggZD0iTTExLjUgMzBjNS41LTMgMTUuNS0zIDIxIDBtLTIxIDMuNWM1LjUtMyAxNS41LTMgMjEgMG0tMjEgMy41YzUuNS0zIDE1LjUtMyAyMSAwIi8+PC9nPjwvc3ZnPg==');
+}
+.pc.bp {
+  background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0NSIgaGVpZ2h0PSI0NSI+PHBhdGggZD0iTTIyLjUgOWMtMi4yMSAwLTQgMS43OS00IDQgMCAuODkuMjkgMS43MS43OCAyLjM4QzE3LjMzIDE2LjUgMTYgMTguNTkgMTYgMjFjMCAyLjAzLjk0IDMuODQgMi40MSA1LjAzLTMgMS4wNi03LjQxIDUuNTUtNy40MSAxMy40N2gyM2MwLTcuOTItNC40MS0xMi40MS03LjQxLTEzLjQ3IDEuNDctMS4xOSAyLjQxLTMgMi40MS01LjAzIDAtMi40MS0xLjMzLTQuNS0zLjI4LTUuNjIuNDktLjY3Ljc4LTEuNDkuNzgtMi4zOCAwLTIuMjEtMS43OS00LTQtNHoiIHN0cm9rZT0iIzAwMCIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjwvc3ZnPg==');
+}
+.pc.bb {
+  background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0NSIgaGVpZ2h0PSI0NSI+PGcgZmlsbD0ibm9uZSIgZmlsbC1ydWxlPSJldmVub2RkIiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxnIGZpbGw9IiMwMDAiIHN0cm9rZS1saW5lY2FwPSJidXR0Ij48cGF0aCBkPSJNOSAzNmMzLjM5LS45NyAxMC4xMS40MyAxMy41LTIgMy4zOSAyLjQzIDEwLjExIDEuMDMgMTMuNSAyIDAgMCAxLjY1LjU0IDMgMi0uNjguOTctMS42NS45OS0zIC41LTMuMzktLjk3LTEwLjExLjQ2LTEzLjUtMS0zLjM5IDEuNDYtMTAuMTEuMDMtMTMuNSAxLTEuMzU0LjQ5LTIuMzIzLjQ3LTMtLjUgMS4zNTQtMS45NCAzLTIgMy0yeiIvPjxwYXRoIGQ9Ik0xNSAzMmMyLjUgMi41IDEyLjUgMi41IDE1IDAgLjUtMS41IDAtMiAwLTIgMC0yLjUtMi41LTQtMi41LTQgNS41LTEuNSA2LTExLjUtNS0xNS41LTExIDQtMTAuNSAxNC01IDE1LjUgMCAwLTIuNSAxLjUtMi41IDQgMCAwLS41LjUgMCAyeiIvPjxwYXRoIGQ9Ik0yNSA4YTIuNSAyLjUgMCAxIDEtNSAwIDIuNSAyLjUgMCAxIDEgNSAweiIvPjwvZz48cGF0aCBkPSJNMTcuNSAyNmgxME0xNSAzMGgxNW0tNy41LTE0LjV2NU0yMCAxOGg1IiBzdHJva2U9IiNlY2VjZWMiIHN0cm9rZS1saW5lam9pbj0ibWl0ZXIiLz48L2c+PC9zdmc+');
+}
+.pc.bn {
+  background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0NSIgaGVpZ2h0PSI0NSI+PGcgZmlsbD0ibm9uZSIgZmlsbC1ydWxlPSJldmVub2RkIiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik0yMiAxMGMxMC41IDEgMTYuNSA4IDE2IDI5SDE1YzAtOSAxMC02LjUgOC0yMSIgZmlsbD0iIzAwMCIvPjxwYXRoIGQ9Ik0yNCAxOGMuMzggMi45MS01LjU1IDcuMzctOCA5LTMgMi0yLjgyIDQuMzQtNSA0LTEuMDQyLS45NCAxLjQxLTMuMDQgMC0zLTEgMCAuMTkgMS4yMy0xIDItMSAwLTQuMDAzIDEtNC00IDAtMiA2LTEyIDYtMTJzMS44OS0xLjkgMi0zLjVjLS43My0uOTk0LS41LTItLjUtMyAxLTEgMyAyLjUgMyAyLjVoMnMuNzgtMS45OTIgMi41LTNjMSAwIDEgMyAxIDMiIGZpbGw9IiMwMDAiLz48cGF0aCBkPSJNOS41IDI1LjVhLjUuNSAwIDEgMS0xIDAgLjUuNSAwIDEgMSAxIDB6bTUuNDMzLTkuNzVhLjUgMS41IDMwIDEgMS0uODY2LS41LjUgMS41IDMwIDEgMSAuODY2LjV6IiBmaWxsPSIjZWNlY2VjIiBzdHJva2U9IiNlY2VjZWMiLz48cGF0aCBkPSJNMjQuNTUgMTAuNGwtLjQ1IDEuNDUuNS4xNWMzLjE1IDEgNS42NSAyLjQ5IDcuOSA2Ljc1UzM1Ljc1IDI5LjA2IDM1LjI1IDM5bC0uMDUuNWgyLjI1bC4wNS0uNWMuNS0xMC4wNi0uODgtMTYuODUtMy4yNS0yMS4zNC0yLjM3LTQuNDktNS43OS02LjY0LTkuMTktNy4xNmwtLjUxLS4xeiIgZmlsbD0iI2VjZWNlYyIgc3Ryb2tlPSJub25lIi8+PC9nPjwvc3ZnPg==');
+}
+.pc.br {
+  background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0NSIgaGVpZ2h0PSI0NSI+PGcgZmlsbC1ydWxlPSJldmVub2RkIiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik05IDM5aDI3di0zSDl2M3ptMy41LTdsMS41LTIuNWgxN2wxLjUgMi41aC0yMHptLS41IDR2LTRoMjF2NEgxMnoiIHN0cm9rZS1saW5lY2FwPSJidXR0Ii8+PHBhdGggZD0iTTE0IDI5LjV2LTEzaDE3djEzSDE0eiIgc3Ryb2tlLWxpbmVjYXA9ImJ1dHQiIHN0cm9rZS1saW5lam9pbj0ibWl0ZXIiLz48cGF0aCBkPSJNMTQgMTYuNUwxMSAxNGgyM2wtMyAyLjVIMTR6TTExIDE0VjloNHYyaDVWOWg1djJoNVY5aDR2NUgxMXoiIHN0cm9rZS1saW5lY2FwPSJidXR0Ii8+PHBhdGggZD0iTTEyIDM1LjVoMjFtLTIwLTRoMTltLTE4LTJoMTdtLTE3LTEzaDE3TTExIDE0aDIzIiBmaWxsPSJub25lIiBzdHJva2U9IiNlY2VjZWMiIHN0cm9rZS13aWR0aD0iMSIgc3Ryb2tlLWxpbmVqb2luPSJtaXRlciIvPjwvZz48L3N2Zz4=');
+}
+.pc.bq {
+  background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0NSIgaGVpZ2h0PSI0NSI+PGcgZmlsbC1ydWxlPSJldmVub2RkIiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxnIHN0cm9rZT0ibm9uZSI+PGNpcmNsZSBjeD0iNiIgY3k9IjEyIiByPSIyLjc1Ii8+PGNpcmNsZSBjeD0iMTQiIGN5PSI5IiByPSIyLjc1Ii8+PGNpcmNsZSBjeD0iMjIuNSIgY3k9IjgiIHI9IjIuNzUiLz48Y2lyY2xlIGN4PSIzMSIgY3k9IjkiIHI9IjIuNzUiLz48Y2lyY2xlIGN4PSIzOSIgY3k9IjEyIiByPSIyLjc1Ii8+PC9nPjxwYXRoIGQ9Ik05IDI2YzguNS0xLjUgMjEtMS41IDI3IDBsMi41LTEyLjVMMzEgMjVsLS4zLTE0LjEtNS4yIDEzLjYtMy0xNC41LTMgMTQuNS01LjItMTMuNkwxNCAyNSA2LjUgMTMuNSA5IDI2eiIgc3Ryb2tlLWxpbmVjYXA9ImJ1dHQiLz48cGF0aCBkPSJNOSAyNmMwIDIgMS41IDIgMi41IDQgMSAxLjUgMSAxIC41IDMuNS0xLjUgMS0xLjUgMi41LTEuNSAyLjUtMS41IDEuNS41IDIuNS41IDIuNSA2LjUgMSAxNi41IDEgMjMgMCAwIDAgMS41LTEgMC0yLjUgMCAwIC41LTEuNS0xLTIuNS0uNS0yLjUtLjUtMiAuNS0zLjUgMS0yIDIuNS0yIDIuNS00LTguNS0xLjUtMTguNS0xLjUtMjcgMHoiIHN0cm9rZS1saW5lY2FwPSJidXR0Ii8+PHBhdGggZD0iTTExIDM4LjVhMzUgMzUgMSAwIDAgMjMgMCIgZmlsbD0ibm9uZSIgc3Ryb2tlLWxpbmVjYXA9ImJ1dHQiLz48cGF0aCBkPSJNMTEgMjlhMzUgMzUgMSAwIDEgMjMgMG0tMjEuNSAyLjVoMjBtLTIxIDNhMzUgMzUgMSAwIDAgMjIgMG0tMjMgM2EzNSAzNSAxIDAgMCAyNCAwIiBmaWxsPSJub25lIiBzdHJva2U9IiNlY2VjZWMiLz48L2c+PC9zdmc+');
+}
+.pc.bk {
+  background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0NSIgaGVpZ2h0PSI0NSI+PGcgZmlsbD0ibm9uZSIgZmlsbC1ydWxlPSJldmVub2RkIiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik0yMi41IDExLjYzVjYiIHN0cm9rZS1saW5lam9pbj0ibWl0ZXIiLz48cGF0aCBkPSJNMjIuNSAyNXM0LjUtNy41IDMtMTAuNWMwIDAtMS0yLjUtMy0yLjVzLTMgMi41LTMgMi41Yy0xLjUgMyAzIDEwLjUgMyAxMC41IiBmaWxsPSIjMDAwIiBzdHJva2UtbGluZWNhcD0iYnV0dCIgc3Ryb2tlLWxpbmVqb2luPSJtaXRlciIvPjxwYXRoIGQ9Ik0xMS41IDM3YzUuNSAzLjUgMTUuNSAzLjUgMjEgMHYtN3M5LTQuNSA2LTEwLjVjLTQtNi41LTEzLjUtMy41LTE2IDRWMjd2LTMuNWMtMy41LTcuNS0xMy0xMC41LTE2LTQtMyA2IDUgMTAgNSAxMFYzN3oiIGZpbGw9IiMwMDAiLz48cGF0aCBkPSJNMjAgOGg1IiBzdHJva2UtbGluZWpvaW49Im1pdGVyIi8+PHBhdGggZD0iTTMyIDI5LjVzOC41LTQgNi4wMy05LjY1QzM0LjE1IDE0IDI1IDE4IDIyLjUgMjQuNWwuMDEgMi4xLS4wMS0yLjFDMjAgMTggOS45MDYgMTQgNi45OTcgMTkuODVjLTIuNDk3IDUuNjUgNC44NTMgOSA0Ljg1MyA5IiBzdHJva2U9IiNlY2VjZWMiLz48cGF0aCBkPSJNMTEuNSAzMGM1LjUtMyAxNS41LTMgMjEgMG0tMjEgMy41YzUuNS0zIDE1LjUtMyAyMSAwbS0yMSAzLjVjNS41LTMgMTUuNS0zIDIxIDAiIHN0cm9rZT0iI2VjZWNlYyIvPjwvZz48L3N2Zz4=');
+}
+
+</style>
+
+<div class="app">
+  <div class="board-col">
+    <div class="player" id="p-top"></div>
+    <div class="board-wrap">
+      <div class="board" id="board"></div>
+      <div class="overlay" id="overlay" hidden></div>
+    </div>
+    <div class="player" id="p-bot"></div>
+  </div>
+
+  <div class="side">
+    <header><h1>Chess Uno</h1><span id="turnno"></span></header>
+    <div class="sec net" id="net" hidden></div>
+    <div class="sec">
+      <div class="status" id="status"></div>
+      <div class="pips" id="pips"></div>
+    </div>
+    <div class="sec">
+      <div class="table">
+        <button class="card deck" id="deck" type="button"></button>
+        <div class="drawn" id="drawn"></div>
+      </div>
+      <div class="wildpick" id="wildpick" hidden></div>
+    </div>
+    <div class="log" id="log"></div>
+    <div class="foot">
+      <button class="btn primary" id="newgame" type="button">새 게임</button>
+      <button class="btn" id="mkroom" type="button" hidden>온라인 방 만들기</button>
+      <label id="autoflip-l"><input type="checkbox" id="autoflip"> 차례마다 보드 뒤집기</label>
+    </div>
+    <details>
+      <summary>규칙 보기</summary>
+      <table>
+        <tr><td>0~9</td><td>그 숫자만큼 연속으로 수를 둔다. 0은 턴을 넘긴다.</td></tr>
+        <tr><td>Skip ⊘</td><td>상대 턴을 건너뛴다. 바로 한 장 더 뽑는다.</td></tr>
+        <tr><td>Reverse ⇄</td><td>상대가 마지막으로 둔 수를 되돌린다. 내 턴은 끝난다.</td></tr>
+        <tr><td>+2</td><td>상대는 다음 턴에 2장 중 작은 숫자만 쓴다. 내 턴은 끝난다.</td></tr>
+        <tr><td>Wild</td><td>1~4 중 둘 수의 개수를 직접 고른다.</td></tr>
+        <tr><td>Wild +4</td><td>4수를 두고, 상대는 다음 턴에 2장 중 작은 숫자만 쓴다.</td></tr>
+      </table>
+      <ul>
+        <li>상대 킹을 잡으면 승리.</li>
+        <li>연속 수 도중에는 내 킹이 공격받아도 되지만, 턴의 마지막 수를 둔 뒤에는 안전해야 한다. 마지막 수로 킹을 지킬 방법이 없으면 패배.</li>
+        <li>온라인 방: 방을 만든 사람이 링크를 보내면 상대는 그 링크만 열면 된다. 방을 만든 쪽 브라우저가 열려 있어야 대국이 이어진다.</li>
+        <li>캐슬링, 앙파상, 프로모션은 일반 체스와 같다. 카드 색은 효과가 없다.</li>
+      </ul>
+    </details>
+  </div>
+</div>
+<p class="credit">기물 그림: Colin M.L. Burnett (CC BY-SA 3.0)</p>
+
+<script>
+(()=>{function e(e,t,n,r){Object.defineProperty(e,t,{get:n,set:r,enumerable:!0,configurable:!0})}function t(e){return e&&e.__esModule?e.default:e}class n{constructor(){this.chunkedMTU=16300,this._dataCount=1,this.chunk=e=>{let t=[],n=e.byteLength,r=Math.ceil(n/this.chunkedMTU),i=0,o=0;for(;o<n;){let s=Math.min(n,o+this.chunkedMTU),a=e.slice(o,s),c={__peerData:this._dataCount,n:i,data:a,total:r};t.push(c),o=s,i++}return this._dataCount++,t}}}class r{append_buffer(e){this.flush(),this._parts.push(e)}append(e){this._pieces.push(e)}flush(){if(this._pieces.length>0){let e=new Uint8Array(this._pieces);this._parts.push(e),this._pieces=[]}}toArrayBuffer(){let e=[];for(let t of this._parts)e.push(t);return function(e){let t=0;for(let n of e)t+=n.byteLength;let n=new Uint8Array(t),r=0;for(let t of e){let e=new Uint8Array(t.buffer,t.byteOffset,t.byteLength);n.set(e,r),r+=t.byteLength}return n}(e).buffer}constructor(){this.encoder=new TextEncoder,this._pieces=[],this._parts=[]}}function i(e){return new s(e).unpack()}function o(e){let t=new a,n=t.pack(e);return n instanceof Promise?n.then(()=>t.getBuffer()):t.getBuffer()}class s{unpack(){let e;let t=this.unpack_uint8();if(t<128)return t;if((224^t)<32)return(224^t)-32;if((e=160^t)<=15)return this.unpack_raw(e);if((e=176^t)<=15)return this.unpack_string(e);if((e=144^t)<=15)return this.unpack_array(e);if((e=128^t)<=15)return this.unpack_map(e);switch(t){case 192:return null;case 193:case 212:case 213:case 214:case 215:return;case 194:return!1;case 195:return!0;case 202:return this.unpack_float();case 203:return this.unpack_double();case 204:return this.unpack_uint8();case 205:return this.unpack_uint16();case 206:return this.unpack_uint32();case 207:return this.unpack_uint64();case 208:return this.unpack_int8();case 209:return this.unpack_int16();case 210:return this.unpack_int32();case 211:return this.unpack_int64();case 216:return e=this.unpack_uint16(),this.unpack_string(e);case 217:return e=this.unpack_uint32(),this.unpack_string(e);case 218:return e=this.unpack_uint16(),this.unpack_raw(e);case 219:return e=this.unpack_uint32(),this.unpack_raw(e);case 220:return e=this.unpack_uint16(),this.unpack_array(e);case 221:return e=this.unpack_uint32(),this.unpack_array(e);case 222:return e=this.unpack_uint16(),this.unpack_map(e);case 223:return e=this.unpack_uint32(),this.unpack_map(e)}}unpack_uint8(){let e=255&this.dataView[this.index];return this.index++,e}unpack_uint16(){let e=this.read(2),t=(255&e[0])*256+(255&e[1]);return this.index+=2,t}unpack_uint32(){let e=this.read(4),t=((256*e[0]+e[1])*256+e[2])*256+e[3];return this.index+=4,t}unpack_uint64(){let e=this.read(8),t=((((((256*e[0]+e[1])*256+e[2])*256+e[3])*256+e[4])*256+e[5])*256+e[6])*256+e[7];return this.index+=8,t}unpack_int8(){let e=this.unpack_uint8();return e<128?e:e-256}unpack_int16(){let e=this.unpack_uint16();return e<32768?e:e-65536}unpack_int32(){let e=this.unpack_uint32();return e<2147483648?e:e-4294967296}unpack_int64(){let e=this.unpack_uint64();return e<0x7fffffffffffffff?e:e-18446744073709552e3}unpack_raw(e){if(this.length<this.index+e)throw Error(`BinaryPackFailure: index is out of range ${this.index} ${e} ${this.length}`);let t=this.dataBuffer.slice(this.index,this.index+e);return this.index+=e,t}unpack_string(e){let t,n;let r=this.read(e),i=0,o="";for(;i<e;)(t=r[i])<160?(n=t,i++):(192^t)<32?(n=(31&t)<<6|63&r[i+1],i+=2):(224^t)<16?(n=(15&t)<<12|(63&r[i+1])<<6|63&r[i+2],i+=3):(n=(7&t)<<18|(63&r[i+1])<<12|(63&r[i+2])<<6|63&r[i+3],i+=4),o+=String.fromCodePoint(n);return this.index+=e,o}unpack_array(e){let t=Array(e);for(let n=0;n<e;n++)t[n]=this.unpack();return t}unpack_map(e){let t={};for(let n=0;n<e;n++)t[this.unpack()]=this.unpack();return t}unpack_float(){let e=this.unpack_uint32();return(0==e>>31?1:-1)*(8388607&e|8388608)*2**((e>>23&255)-127-23)}unpack_double(){let e=this.unpack_uint32(),t=this.unpack_uint32(),n=(e>>20&2047)-1023;return(0==e>>31?1:-1)*((1048575&e|1048576)*2**(n-20)+t*2**(n-52))}read(e){let t=this.index;if(t+e<=this.length)return this.dataView.subarray(t,t+e);throw Error("BinaryPackFailure: read index out of range")}constructor(e){this.index=0,this.dataBuffer=e,this.dataView=new Uint8Array(this.dataBuffer),this.length=this.dataBuffer.byteLength}}class a{getBuffer(){return this._bufferBuilder.toArrayBuffer()}pack(e){if("string"==typeof e)this.pack_string(e);else if("number"==typeof e)Math.floor(e)===e?this.pack_integer(e):this.pack_double(e);else if("boolean"==typeof e)!0===e?this._bufferBuilder.append(195):!1===e&&this._bufferBuilder.append(194);else if(void 0===e)this._bufferBuilder.append(192);else if("object"==typeof e){if(null===e)this._bufferBuilder.append(192);else{let t=e.constructor;if(e instanceof Array){let t=this.pack_array(e);if(t instanceof Promise)return t.then(()=>this._bufferBuilder.flush())}else if(e instanceof ArrayBuffer)this.pack_bin(new Uint8Array(e));else if("BYTES_PER_ELEMENT"in e)this.pack_bin(new Uint8Array(e.buffer,e.byteOffset,e.byteLength));else if(e instanceof Date)this.pack_string(e.toString());else if(e instanceof Blob)return e.arrayBuffer().then(e=>{this.pack_bin(new Uint8Array(e)),this._bufferBuilder.flush()});else if(t==Object||t.toString().startsWith("class")){let t=this.pack_object(e);if(t instanceof Promise)return t.then(()=>this._bufferBuilder.flush())}else throw Error(`Type "${t.toString()}" not yet supported`)}}else throw Error(`Type "${typeof e}" not yet supported`);this._bufferBuilder.flush()}pack_bin(e){let t=e.length;if(t<=15)this.pack_uint8(160+t);else if(t<=65535)this._bufferBuilder.append(218),this.pack_uint16(t);else if(t<=4294967295)this._bufferBuilder.append(219),this.pack_uint32(t);else throw Error("Invalid length");this._bufferBuilder.append_buffer(e)}pack_string(e){let t=this._textEncoder.encode(e),n=t.length;if(n<=15)this.pack_uint8(176+n);else if(n<=65535)this._bufferBuilder.append(216),this.pack_uint16(n);else if(n<=4294967295)this._bufferBuilder.append(217),this.pack_uint32(n);else throw Error("Invalid length");this._bufferBuilder.append_buffer(t)}pack_array(e){let t=e.length;if(t<=15)this.pack_uint8(144+t);else if(t<=65535)this._bufferBuilder.append(220),this.pack_uint16(t);else if(t<=4294967295)this._bufferBuilder.append(221),this.pack_uint32(t);else throw Error("Invalid length");let n=r=>{if(r<t){let t=this.pack(e[r]);return t instanceof Promise?t.then(()=>n(r+1)):n(r+1)}};return n(0)}pack_integer(e){if(e>=-32&&e<=127)this._bufferBuilder.append(255&e);else if(e>=0&&e<=255)this._bufferBuilder.append(204),this.pack_uint8(e);else if(e>=-128&&e<=127)this._bufferBuilder.append(208),this.pack_int8(e);else if(e>=0&&e<=65535)this._bufferBuilder.append(205),this.pack_uint16(e);else if(e>=-32768&&e<=32767)this._bufferBuilder.append(209),this.pack_int16(e);else if(e>=0&&e<=4294967295)this._bufferBuilder.append(206),this.pack_uint32(e);else if(e>=-2147483648&&e<=2147483647)this._bufferBuilder.append(210),this.pack_int32(e);else if(e>=-0x8000000000000000&&e<=0x7fffffffffffffff)this._bufferBuilder.append(211),this.pack_int64(e);else if(e>=0&&e<=18446744073709552e3)this._bufferBuilder.append(207),this.pack_uint64(e);else throw Error("Invalid integer")}pack_double(e){let t=0;e<0&&(t=1,e=-e);let n=Math.floor(Math.log(e)/Math.LN2),r=Math.floor((e/2**n-1)*4503599627370496),i=t<<31|n+1023<<20|r/4294967296&1048575;this._bufferBuilder.append(203),this.pack_int32(i),this.pack_int32(r%4294967296)}pack_object(e){let t=Object.keys(e),n=t.length;if(n<=15)this.pack_uint8(128+n);else if(n<=65535)this._bufferBuilder.append(222),this.pack_uint16(n);else if(n<=4294967295)this._bufferBuilder.append(223),this.pack_uint32(n);else throw Error("Invalid length");let r=n=>{if(n<t.length){let i=t[n];if(e.hasOwnProperty(i)){this.pack(i);let t=this.pack(e[i]);if(t instanceof Promise)return t.then(()=>r(n+1))}return r(n+1)}};return r(0)}pack_uint8(e){this._bufferBuilder.append(e)}pack_uint16(e){this._bufferBuilder.append(e>>8),this._bufferBuilder.append(255&e)}pack_uint32(e){let t=4294967295&e;this._bufferBuilder.append((4278190080&t)>>>24),this._bufferBuilder.append((16711680&t)>>>16),this._bufferBuilder.append((65280&t)>>>8),this._bufferBuilder.append(255&t)}pack_uint64(e){let t=e/4294967296,n=e%4294967296;this._bufferBuilder.append((4278190080&t)>>>24),this._bufferBuilder.append((16711680&t)>>>16),this._bufferBuilder.append((65280&t)>>>8),this._bufferBuilder.append(255&t),this._bufferBuilder.append((4278190080&n)>>>24),this._bufferBuilder.append((16711680&n)>>>16),this._bufferBuilder.append((65280&n)>>>8),this._bufferBuilder.append(255&n)}pack_int8(e){this._bufferBuilder.append(255&e)}pack_int16(e){this._bufferBuilder.append((65280&e)>>8),this._bufferBuilder.append(255&e)}pack_int32(e){this._bufferBuilder.append(e>>>24&255),this._bufferBuilder.append((16711680&e)>>>16),this._bufferBuilder.append((65280&e)>>>8),this._bufferBuilder.append(255&e)}pack_int64(e){let t=Math.floor(e/4294967296),n=e%4294967296;this._bufferBuilder.append((4278190080&t)>>>24),this._bufferBuilder.append((16711680&t)>>>16),this._bufferBuilder.append((65280&t)>>>8),this._bufferBuilder.append(255&t),this._bufferBuilder.append((4278190080&n)>>>24),this._bufferBuilder.append((16711680&n)>>>16),this._bufferBuilder.append((65280&n)>>>8),this._bufferBuilder.append(255&n)}constructor(){this._bufferBuilder=new r,this._textEncoder=new TextEncoder}}let c=!0,l=!0;function p(e,t,n){let r=e.match(t);return r&&r.length>=n&&parseInt(r[n],10)}function d(e,t,n){if(!e.RTCPeerConnection)return;let r=e.RTCPeerConnection.prototype,i=r.addEventListener;r.addEventListener=function(e,r){if(e!==t)return i.apply(this,arguments);let o=e=>{let t=n(e);t&&(r.handleEvent?r.handleEvent(t):r(t))};return this._eventMap=this._eventMap||{},this._eventMap[t]||(this._eventMap[t]=new Map),this._eventMap[t].set(r,o),i.apply(this,[e,o])};let o=r.removeEventListener;r.removeEventListener=function(e,n){if(e!==t||!this._eventMap||!this._eventMap[t]||!this._eventMap[t].has(n))return o.apply(this,arguments);let r=this._eventMap[t].get(n);return this._eventMap[t].delete(n),0===this._eventMap[t].size&&delete this._eventMap[t],0===Object.keys(this._eventMap).length&&delete this._eventMap,o.apply(this,[e,r])},Object.defineProperty(r,"on"+t,{get(){return this["_on"+t]},set(e){this["_on"+t]&&(this.removeEventListener(t,this["_on"+t]),delete this["_on"+t]),e&&this.addEventListener(t,this["_on"+t]=e)},enumerable:!0,configurable:!0})}function h(e){return"boolean"!=typeof e?Error("Argument type: "+typeof e+". Please use a boolean."):(c=e,e?"adapter.js logging disabled":"adapter.js logging enabled")}function u(e){return"boolean"!=typeof e?Error("Argument type: "+typeof e+". Please use a boolean."):(l=!e,"adapter.js deprecation warnings "+(e?"disabled":"enabled"))}function f(){"object"!=typeof window||c||"undefined"==typeof console||"function"!=typeof console.log||console.log.apply(console,arguments)}function m(e,t){l&&console.warn(e+" is deprecated, please use "+t+" instead.")}function g(e){return"[object Object]"===Object.prototype.toString.call(e)}function y(e,t,n){let r=n?"outbound-rtp":"inbound-rtp",i=new Map;if(null===t)return i;let o=[];return e.forEach(e=>{"track"===e.type&&e.trackIdentifier===t.id&&o.push(e)}),o.forEach(t=>{e.forEach(n=>{n.type===r&&n.trackId===t.id&&function e(t,n,r){!n||r.has(n.id)||(r.set(n.id,n),Object.keys(n).forEach(i=>{i.endsWith("Id")?e(t,t.get(n[i]),r):i.endsWith("Ids")&&n[i].forEach(n=>{e(t,t.get(n),r)})}))}(e,n,i)})}),i}var _,C,b,v,k,T,S,R,P,w,E,D,x,I,M,O,j={};function L(e,t){let n=e&&e.navigator;if(!n.mediaDevices)return;let r=function(e){if("object"!=typeof e||e.mandatory||e.optional)return e;let t={};return Object.keys(e).forEach(n=>{if("require"===n||"advanced"===n||"mediaSource"===n)return;let r="object"==typeof e[n]?e[n]:{ideal:e[n]};void 0!==r.exact&&"number"==typeof r.exact&&(r.min=r.max=r.exact);let i=function(e,t){return e?e+t.charAt(0).toUpperCase()+t.slice(1):"deviceId"===t?"sourceId":t};if(void 0!==r.ideal){t.optional=t.optional||[];let e={};"number"==typeof r.ideal?(e[i("min",n)]=r.ideal,t.optional.push(e),(e={})[i("max",n)]=r.ideal):e[i("",n)]=r.ideal,t.optional.push(e)}void 0!==r.exact&&"number"!=typeof r.exact?(t.mandatory=t.mandatory||{},t.mandatory[i("",n)]=r.exact):["min","max"].forEach(e=>{void 0!==r[e]&&(t.mandatory=t.mandatory||{},t.mandatory[i(e,n)]=r[e])})}),e.advanced&&(t.optional=(t.optional||[]).concat(e.advanced)),t},i=function(e,i){if(t.version>=61)return i(e);if((e=JSON.parse(JSON.stringify(e)))&&"object"==typeof e.audio){let t=function(e,t,n){t in e&&!(n in e)&&(e[n]=e[t],delete e[t])};t((e=JSON.parse(JSON.stringify(e))).audio,"autoGainControl","googAutoGainControl"),t(e.audio,"noiseSuppression","googNoiseSuppression"),e.audio=r(e.audio)}if(e&&"object"==typeof e.video){let o=e.video.facingMode;o=o&&("object"==typeof o?o:{ideal:o});let s=t.version<66;if(o&&("user"===o.exact||"environment"===o.exact||"user"===o.ideal||"environment"===o.ideal)&&!(n.mediaDevices.getSupportedConstraints&&n.mediaDevices.getSupportedConstraints().facingMode&&!s)){let t;if(delete e.video.facingMode,"environment"===o.exact||"environment"===o.ideal?t=["back","rear"]:("user"===o.exact||"user"===o.ideal)&&(t=["front"]),t)return n.mediaDevices.enumerateDevices().then(n=>{let s=(n=n.filter(e=>"videoinput"===e.kind)).find(e=>t.some(t=>e.label.toLowerCase().includes(t)));return!s&&n.length&&t.includes("back")&&(s=n[n.length-1]),s&&(e.video.deviceId=o.exact?{exact:s.deviceId}:{ideal:s.deviceId}),e.video=r(e.video),f("chrome: "+JSON.stringify(e)),i(e)})}e.video=r(e.video)}return f("chrome: "+JSON.stringify(e)),i(e)},o=function(e){return t.version>=64?e:{name:({PermissionDeniedError:"NotAllowedError",PermissionDismissedError:"NotAllowedError",InvalidStateError:"NotAllowedError",DevicesNotFoundError:"NotFoundError",ConstraintNotSatisfiedError:"OverconstrainedError",TrackStartError:"NotReadableError",MediaDeviceFailedDueToShutdown:"NotAllowedError",MediaDeviceKillSwitchOn:"NotAllowedError",TabCaptureError:"AbortError",ScreenCaptureError:"AbortError",DeviceCaptureError:"AbortError"})[e.name]||e.name,message:e.message,constraint:e.constraint||e.constraintName,toString(){return this.name+(this.message&&": ")+this.message}}};if(n.getUserMedia=(function(e,t,r){i(e,e=>{n.webkitGetUserMedia(e,t,e=>{r&&r(o(e))})})}).bind(n),n.mediaDevices.getUserMedia){let e=n.mediaDevices.getUserMedia.bind(n.mediaDevices);n.mediaDevices.getUserMedia=function(t){return i(t,t=>e(t).then(e=>{if(t.audio&&!e.getAudioTracks().length||t.video&&!e.getVideoTracks().length)throw e.getTracks().forEach(e=>{e.stop()}),new DOMException("","NotFoundError");return e},e=>Promise.reject(o(e))))}}}function A(e){e.MediaStream=e.MediaStream||e.webkitMediaStream}function B(e){if("object"!=typeof e||!e.RTCPeerConnection||"ontrack"in e.RTCPeerConnection.prototype)d(e,"track",e=>(e.transceiver||Object.defineProperty(e,"transceiver",{value:{receiver:e.receiver}}),e));else{Object.defineProperty(e.RTCPeerConnection.prototype,"ontrack",{get(){return this._ontrack},set(e){this._ontrack&&this.removeEventListener("track",this._ontrack),this.addEventListener("track",this._ontrack=e)},enumerable:!0,configurable:!0});let t=e.RTCPeerConnection.prototype.setRemoteDescription;e.RTCPeerConnection.prototype.setRemoteDescription=function(){return this._ontrackpoly||(this._ontrackpoly=t=>{t.stream.addEventListener("addtrack",n=>{let r;r=e.RTCPeerConnection.prototype.getReceivers?this.getReceivers().find(e=>e.track&&e.track.id===n.track.id):{track:n.track};let i=new Event("track");i.track=n.track,i.receiver=r,i.transceiver={receiver:r},i.streams=[t.stream],this.dispatchEvent(i)}),t.stream.getTracks().forEach(n=>{let r;r=e.RTCPeerConnection.prototype.getReceivers?this.getReceivers().find(e=>e.track&&e.track.id===n.id):{track:n};let i=new Event("track");i.track=n,i.receiver=r,i.transceiver={receiver:r},i.streams=[t.stream],this.dispatchEvent(i)})},this.addEventListener("addstream",this._ontrackpoly)),t.apply(this,arguments)}}}function F(e){if("object"==typeof e&&e.RTCPeerConnection&&!("getSenders"in e.RTCPeerConnection.prototype)&&"createDTMFSender"in e.RTCPeerConnection.prototype){let t=function(e,t){return{track:t,get dtmf(){return void 0===this._dtmf&&("audio"===t.kind?this._dtmf=e.createDTMFSender(t):this._dtmf=null),this._dtmf},_pc:e}};if(!e.RTCPeerConnection.prototype.getSenders){e.RTCPeerConnection.prototype.getSenders=function(){return this._senders=this._senders||[],this._senders.slice()};let n=e.RTCPeerConnection.prototype.addTrack;e.RTCPeerConnection.prototype.addTrack=function(e,r){let i=n.apply(this,arguments);return i||(i=t(this,e),this._senders.push(i)),i};let r=e.RTCPeerConnection.prototype.removeTrack;e.RTCPeerConnection.prototype.removeTrack=function(e){r.apply(this,arguments);let t=this._senders.indexOf(e);-1!==t&&this._senders.splice(t,1)}}let n=e.RTCPeerConnection.prototype.addStream;e.RTCPeerConnection.prototype.addStream=function(e){this._senders=this._senders||[],n.apply(this,[e]),e.getTracks().forEach(e=>{this._senders.push(t(this,e))})};let r=e.RTCPeerConnection.prototype.removeStream;e.RTCPeerConnection.prototype.removeStream=function(e){this._senders=this._senders||[],r.apply(this,[e]),e.getTracks().forEach(e=>{let t=this._senders.find(t=>t.track===e);t&&this._senders.splice(this._senders.indexOf(t),1)})}}else if("object"==typeof e&&e.RTCPeerConnection&&"getSenders"in e.RTCPeerConnection.prototype&&"createDTMFSender"in e.RTCPeerConnection.prototype&&e.RTCRtpSender&&!("dtmf"in e.RTCRtpSender.prototype)){let t=e.RTCPeerConnection.prototype.getSenders;e.RTCPeerConnection.prototype.getSenders=function(){let e=t.apply(this,[]);return e.forEach(e=>e._pc=this),e},Object.defineProperty(e.RTCRtpSender.prototype,"dtmf",{get(){return void 0===this._dtmf&&("audio"===this.track.kind?this._dtmf=this._pc.createDTMFSender(this.track):this._dtmf=null),this._dtmf}})}}function U(e){if(!("object"==typeof e&&e.RTCPeerConnection&&e.RTCRtpSender&&e.RTCRtpReceiver))return;if(!("getStats"in e.RTCRtpSender.prototype)){let t=e.RTCPeerConnection.prototype.getSenders;t&&(e.RTCPeerConnection.prototype.getSenders=function(){let e=t.apply(this,[]);return e.forEach(e=>e._pc=this),e});let n=e.RTCPeerConnection.prototype.addTrack;n&&(e.RTCPeerConnection.prototype.addTrack=function(){let e=n.apply(this,arguments);return e._pc=this,e}),e.RTCRtpSender.prototype.getStats=function(){let e=this;return this._pc.getStats().then(t=>y(t,e.track,!0))}}if(!("getStats"in e.RTCRtpReceiver.prototype)){let t=e.RTCPeerConnection.prototype.getReceivers;t&&(e.RTCPeerConnection.prototype.getReceivers=function(){let e=t.apply(this,[]);return e.forEach(e=>e._pc=this),e}),d(e,"track",e=>(e.receiver._pc=e.srcElement,e)),e.RTCRtpReceiver.prototype.getStats=function(){let e=this;return this._pc.getStats().then(t=>y(t,e.track,!1))}}if(!("getStats"in e.RTCRtpSender.prototype&&"getStats"in e.RTCRtpReceiver.prototype))return;let t=e.RTCPeerConnection.prototype.getStats;e.RTCPeerConnection.prototype.getStats=function(){if(arguments.length>0&&arguments[0]instanceof e.MediaStreamTrack){let e,t,n;let r=arguments[0];return(this.getSenders().forEach(t=>{t.track===r&&(e?n=!0:e=t)}),this.getReceivers().forEach(e=>(e.track===r&&(t?n=!0:t=e),e.track===r)),n||e&&t)?Promise.reject(new DOMException("There are more than one sender or receiver for the track.","InvalidAccessError")):e?e.getStats():t?t.getStats():Promise.reject(new DOMException("There is no sender or receiver for the track.","InvalidAccessError"))}return t.apply(this,arguments)}}function z(e){e.RTCPeerConnection.prototype.getLocalStreams=function(){return this._shimmedLocalStreams=this._shimmedLocalStreams||{},Object.keys(this._shimmedLocalStreams).map(e=>this._shimmedLocalStreams[e][0])};let t=e.RTCPeerConnection.prototype.addTrack;e.RTCPeerConnection.prototype.addTrack=function(e,n){if(!n)return t.apply(this,arguments);this._shimmedLocalStreams=this._shimmedLocalStreams||{};let r=t.apply(this,arguments);return this._shimmedLocalStreams[n.id]?-1===this._shimmedLocalStreams[n.id].indexOf(r)&&this._shimmedLocalStreams[n.id].push(r):this._shimmedLocalStreams[n.id]=[n,r],r};let n=e.RTCPeerConnection.prototype.addStream;e.RTCPeerConnection.prototype.addStream=function(e){this._shimmedLocalStreams=this._shimmedLocalStreams||{},e.getTracks().forEach(e=>{if(this.getSenders().find(t=>t.track===e))throw new DOMException("Track already exists.","InvalidAccessError")});let t=this.getSenders();n.apply(this,arguments);let r=this.getSenders().filter(e=>-1===t.indexOf(e));this._shimmedLocalStreams[e.id]=[e].concat(r)};let r=e.RTCPeerConnection.prototype.removeStream;e.RTCPeerConnection.prototype.removeStream=function(e){return this._shimmedLocalStreams=this._shimmedLocalStreams||{},delete this._shimmedLocalStreams[e.id],r.apply(this,arguments)};let i=e.RTCPeerConnection.prototype.removeTrack;e.RTCPeerConnection.prototype.removeTrack=function(e){return this._shimmedLocalStreams=this._shimmedLocalStreams||{},e&&Object.keys(this._shimmedLocalStreams).forEach(t=>{let n=this._shimmedLocalStreams[t].indexOf(e);-1!==n&&this._shimmedLocalStreams[t].splice(n,1),1===this._shimmedLocalStreams[t].length&&delete this._shimmedLocalStreams[t]}),i.apply(this,arguments)}}function N(e,t){if(!e.RTCPeerConnection)return;if(e.RTCPeerConnection.prototype.addTrack&&t.version>=65)return z(e);let n=e.RTCPeerConnection.prototype.getLocalStreams;e.RTCPeerConnection.prototype.getLocalStreams=function(){let e=n.apply(this);return this._reverseStreams=this._reverseStreams||{},e.map(e=>this._reverseStreams[e.id])};let r=e.RTCPeerConnection.prototype.addStream;e.RTCPeerConnection.prototype.addStream=function(t){if(this._streams=this._streams||{},this._reverseStreams=this._reverseStreams||{},t.getTracks().forEach(e=>{if(this.getSenders().find(t=>t.track===e))throw new DOMException("Track already exists.","InvalidAccessError")}),!this._reverseStreams[t.id]){let n=new e.MediaStream(t.getTracks());this._streams[t.id]=n,this._reverseStreams[n.id]=t,t=n}r.apply(this,[t])};let i=e.RTCPeerConnection.prototype.removeStream;function o(e,t){let n=t.sdp;return Object.keys(e._reverseStreams||[]).forEach(t=>{let r=e._reverseStreams[t],i=e._streams[r.id];n=n.replace(RegExp(i.id,"g"),r.id)}),new RTCSessionDescription({type:t.type,sdp:n})}e.RTCPeerConnection.prototype.removeStream=function(e){this._streams=this._streams||{},this._reverseStreams=this._reverseStreams||{},i.apply(this,[this._streams[e.id]||e]),delete this._reverseStreams[this._streams[e.id]?this._streams[e.id].id:e.id],delete this._streams[e.id]},e.RTCPeerConnection.prototype.addTrack=function(t,n){if("closed"===this.signalingState)throw new DOMException("The RTCPeerConnection's signalingState is 'closed'.","InvalidStateError");let r=[].slice.call(arguments,1);if(1!==r.length||!r[0].getTracks().find(e=>e===t))throw new DOMException("The adapter.js addTrack polyfill only supports a single  stream which is associated with the specified track.","NotSupportedError");if(this.getSenders().find(e=>e.track===t))throw new DOMException("Track already exists.","InvalidAccessError");this._streams=this._streams||{},this._reverseStreams=this._reverseStreams||{};let i=this._streams[n.id];if(i)i.addTrack(t),Promise.resolve().then(()=>{this.dispatchEvent(new Event("negotiationneeded"))});else{let r=new e.MediaStream([t]);this._streams[n.id]=r,this._reverseStreams[r.id]=n,this.addStream(r)}return this.getSenders().find(e=>e.track===t)},["createOffer","createAnswer"].forEach(function(t){let n=e.RTCPeerConnection.prototype[t];e.RTCPeerConnection.prototype[t]=({[t](){let e=arguments,t=arguments.length&&"function"==typeof arguments[0];return t?n.apply(this,[t=>{let n=o(this,t);e[0].apply(null,[n])},t=>{e[1]&&e[1].apply(null,t)},arguments[2]]):n.apply(this,arguments).then(e=>o(this,e))}})[t]});let s=e.RTCPeerConnection.prototype.setLocalDescription;e.RTCPeerConnection.prototype.setLocalDescription=function(){var e,t;let n;return arguments.length&&arguments[0].type&&(arguments[0]=(e=this,t=arguments[0],n=t.sdp,Object.keys(e._reverseStreams||[]).forEach(t=>{let r=e._reverseStreams[t],i=e._streams[r.id];n=n.replace(RegExp(r.id,"g"),i.id)}),new RTCSessionDescription({type:t.type,sdp:n}))),s.apply(this,arguments)};let a=Object.getOwnPropertyDescriptor(e.RTCPeerConnection.prototype,"localDescription");Object.defineProperty(e.RTCPeerConnection.prototype,"localDescription",{get(){let e=a.get.apply(this);return""===e.type?e:o(this,e)}}),e.RTCPeerConnection.prototype.removeTrack=function(e){let t;if("closed"===this.signalingState)throw new DOMException("The RTCPeerConnection's signalingState is 'closed'.","InvalidStateError");if(!e._pc)throw new DOMException("Argument 1 of RTCPeerConnection.removeTrack does not implement interface RTCRtpSender.","TypeError");if(e._pc!==this)throw new DOMException("Sender was not created by this connection.","InvalidAccessError");this._streams=this._streams||{},Object.keys(this._streams).forEach(n=>{this._streams[n].getTracks().find(t=>e.track===t)&&(t=this._streams[n])}),t&&(1===t.getTracks().length?this.removeStream(this._reverseStreams[t.id]):t.removeTrack(e.track),this.dispatchEvent(new Event("negotiationneeded")))}}function $(e,t){!e.RTCPeerConnection&&e.webkitRTCPeerConnection&&(e.RTCPeerConnection=e.webkitRTCPeerConnection),e.RTCPeerConnection&&t.version<53&&["setLocalDescription","setRemoteDescription","addIceCandidate"].forEach(function(t){let n=e.RTCPeerConnection.prototype[t];e.RTCPeerConnection.prototype[t]=({[t](){return arguments[0]=new("addIceCandidate"===t?e.RTCIceCandidate:e.RTCSessionDescription)(arguments[0]),n.apply(this,arguments)}})[t]})}function J(e,t){d(e,"negotiationneeded",e=>{let n=e.target;if(!(t.version<72)&&(!n.getConfiguration||"plan-b"!==n.getConfiguration().sdpSemantics)||"stable"===n.signalingState)return e})}e(j,"shimMediaStream",()=>A),e(j,"shimOnTrack",()=>B),e(j,"shimGetSendersWithDtmf",()=>F),e(j,"shimSenderReceiverGetStats",()=>U),e(j,"shimAddTrackRemoveTrackWithNative",()=>z),e(j,"shimAddTrackRemoveTrack",()=>N),e(j,"shimPeerConnection",()=>$),e(j,"fixNegotiationNeeded",()=>J),e(j,"shimGetUserMedia",()=>L);var V={};function G(e,t){let n=e&&e.navigator,r=e&&e.MediaStreamTrack;if(n.getUserMedia=function(e,t,r){m("navigator.getUserMedia","navigator.mediaDevices.getUserMedia"),n.mediaDevices.getUserMedia(e).then(t,r)},!(t.version>55&&"autoGainControl"in n.mediaDevices.getSupportedConstraints())){let e=function(e,t,n){t in e&&!(n in e)&&(e[n]=e[t],delete e[t])},t=n.mediaDevices.getUserMedia.bind(n.mediaDevices);if(n.mediaDevices.getUserMedia=function(n){return"object"==typeof n&&"object"==typeof n.audio&&(e((n=JSON.parse(JSON.stringify(n))).audio,"autoGainControl","mozAutoGainControl"),e(n.audio,"noiseSuppression","mozNoiseSuppression")),t(n)},r&&r.prototype.getSettings){let t=r.prototype.getSettings;r.prototype.getSettings=function(){let n=t.apply(this,arguments);return e(n,"mozAutoGainControl","autoGainControl"),e(n,"mozNoiseSuppression","noiseSuppression"),n}}if(r&&r.prototype.applyConstraints){let t=r.prototype.applyConstraints;r.prototype.applyConstraints=function(n){return"audio"===this.kind&&"object"==typeof n&&(e(n=JSON.parse(JSON.stringify(n)),"autoGainControl","mozAutoGainControl"),e(n,"noiseSuppression","mozNoiseSuppression")),t.apply(this,[n])}}}}function W(e,t){e.navigator.mediaDevices&&"getDisplayMedia"in e.navigator.mediaDevices||!e.navigator.mediaDevices||(e.navigator.mediaDevices.getDisplayMedia=function(n){if(!(n&&n.video)){let e=new DOMException("getDisplayMedia without video constraints is undefined");return e.name="NotFoundError",e.code=8,Promise.reject(e)}return!0===n.video?n.video={mediaSource:t}:n.video.mediaSource=t,e.navigator.mediaDevices.getUserMedia(n)})}function H(e){"object"==typeof e&&e.RTCTrackEvent&&"receiver"in e.RTCTrackEvent.prototype&&!("transceiver"in e.RTCTrackEvent.prototype)&&Object.defineProperty(e.RTCTrackEvent.prototype,"transceiver",{get(){return{receiver:this.receiver}}})}function Y(e,t){if("object"!=typeof e||!(e.RTCPeerConnection||e.mozRTCPeerConnection))return;!e.RTCPeerConnection&&e.mozRTCPeerConnection&&(e.RTCPeerConnection=e.mozRTCPeerConnection),t.version<53&&["setLocalDescription","setRemoteDescription","addIceCandidate"].forEach(function(t){let n=e.RTCPeerConnection.prototype[t];e.RTCPeerConnection.prototype[t]=({[t](){return arguments[0]=new("addIceCandidate"===t?e.RTCIceCandidate:e.RTCSessionDescription)(arguments[0]),n.apply(this,arguments)}})[t]});let n={inboundrtp:"inbound-rtp",outboundrtp:"outbound-rtp",candidatepair:"candidate-pair",localcandidate:"local-candidate",remotecandidate:"remote-candidate"},r=e.RTCPeerConnection.prototype.getStats;e.RTCPeerConnection.prototype.getStats=function(){let[e,i,o]=arguments;return r.apply(this,[e||null]).then(e=>{if(t.version<53&&!i)try{e.forEach(e=>{e.type=n[e.type]||e.type})}catch(t){if("TypeError"!==t.name)throw t;e.forEach((t,r)=>{e.set(r,Object.assign({},t,{type:n[t.type]||t.type}))})}return e}).then(i,o)}}function K(e){if(!("object"==typeof e&&e.RTCPeerConnection&&e.RTCRtpSender)||e.RTCRtpSender&&"getStats"in e.RTCRtpSender.prototype)return;let t=e.RTCPeerConnection.prototype.getSenders;t&&(e.RTCPeerConnection.prototype.getSenders=function(){let e=t.apply(this,[]);return e.forEach(e=>e._pc=this),e});let n=e.RTCPeerConnection.prototype.addTrack;n&&(e.RTCPeerConnection.prototype.addTrack=function(){let e=n.apply(this,arguments);return e._pc=this,e}),e.RTCRtpSender.prototype.getStats=function(){return this.track?this._pc.getStats(this.track):Promise.resolve(new Map)}}function X(e){if(!("object"==typeof e&&e.RTCPeerConnection&&e.RTCRtpSender)||e.RTCRtpSender&&"getStats"in e.RTCRtpReceiver.prototype)return;let t=e.RTCPeerConnection.prototype.getReceivers;t&&(e.RTCPeerConnection.prototype.getReceivers=function(){let e=t.apply(this,[]);return e.forEach(e=>e._pc=this),e}),d(e,"track",e=>(e.receiver._pc=e.srcElement,e)),e.RTCRtpReceiver.prototype.getStats=function(){return this._pc.getStats(this.track)}}function q(e){!e.RTCPeerConnection||"removeStream"in e.RTCPeerConnection.prototype||(e.RTCPeerConnection.prototype.removeStream=function(e){m("removeStream","removeTrack"),this.getSenders().forEach(t=>{t.track&&e.getTracks().includes(t.track)&&this.removeTrack(t)})})}function Q(e){e.DataChannel&&!e.RTCDataChannel&&(e.RTCDataChannel=e.DataChannel)}function Z(e){if(!("object"==typeof e&&e.RTCPeerConnection))return;let t=e.RTCPeerConnection.prototype.addTransceiver;t&&(e.RTCPeerConnection.prototype.addTransceiver=function(){this.setParametersPromises=[];let e=arguments[1]&&arguments[1].sendEncodings;void 0===e&&(e=[]);let n=(e=[...e]).length>0;n&&e.forEach(e=>{if("rid"in e&&!/^[a-z0-9]{0,16}$/i.test(e.rid))throw TypeError("Invalid RID value provided.");if("scaleResolutionDownBy"in e&&!(parseFloat(e.scaleResolutionDownBy)>=1))throw RangeError("scale_resolution_down_by must be >= 1.0");if("maxFramerate"in e&&!(parseFloat(e.maxFramerate)>=0))throw RangeError("max_framerate must be >= 0.0")});let r=t.apply(this,arguments);if(n){let{sender:t}=r,n=t.getParameters();"encodings"in n&&(1!==n.encodings.length||0!==Object.keys(n.encodings[0]).length)||(n.encodings=e,t.sendEncodings=e,this.setParametersPromises.push(t.setParameters(n).then(()=>{delete t.sendEncodings}).catch(()=>{delete t.sendEncodings})))}return r})}function ee(e){if(!("object"==typeof e&&e.RTCRtpSender))return;let t=e.RTCRtpSender.prototype.getParameters;t&&(e.RTCRtpSender.prototype.getParameters=function(){let e=t.apply(this,arguments);return"encodings"in e||(e.encodings=[].concat(this.sendEncodings||[{}])),e})}function et(e){if(!("object"==typeof e&&e.RTCPeerConnection))return;let t=e.RTCPeerConnection.prototype.createOffer;e.RTCPeerConnection.prototype.createOffer=function(){return this.setParametersPromises&&this.setParametersPromises.length?Promise.all(this.setParametersPromises).then(()=>t.apply(this,arguments)).finally(()=>{this.setParametersPromises=[]}):t.apply(this,arguments)}}function en(e){if(!("object"==typeof e&&e.RTCPeerConnection))return;let t=e.RTCPeerConnection.prototype.createAnswer;e.RTCPeerConnection.prototype.createAnswer=function(){return this.setParametersPromises&&this.setParametersPromises.length?Promise.all(this.setParametersPromises).then(()=>t.apply(this,arguments)).finally(()=>{this.setParametersPromises=[]}):t.apply(this,arguments)}}e(V,"shimOnTrack",()=>H),e(V,"shimPeerConnection",()=>Y),e(V,"shimSenderGetStats",()=>K),e(V,"shimReceiverGetStats",()=>X),e(V,"shimRemoveStream",()=>q),e(V,"shimRTCDataChannel",()=>Q),e(V,"shimAddTransceiver",()=>Z),e(V,"shimGetParameters",()=>ee),e(V,"shimCreateOffer",()=>et),e(V,"shimCreateAnswer",()=>en),e(V,"shimGetUserMedia",()=>G),e(V,"shimGetDisplayMedia",()=>W);var er={};function ei(e){if("object"==typeof e&&e.RTCPeerConnection){if("getLocalStreams"in e.RTCPeerConnection.prototype||(e.RTCPeerConnection.prototype.getLocalStreams=function(){return this._localStreams||(this._localStreams=[]),this._localStreams}),!("addStream"in e.RTCPeerConnection.prototype)){let t=e.RTCPeerConnection.prototype.addTrack;e.RTCPeerConnection.prototype.addStream=function(e){this._localStreams||(this._localStreams=[]),this._localStreams.includes(e)||this._localStreams.push(e),e.getAudioTracks().forEach(n=>t.call(this,n,e)),e.getVideoTracks().forEach(n=>t.call(this,n,e))},e.RTCPeerConnection.prototype.addTrack=function(e,...n){return n&&n.forEach(e=>{this._localStreams?this._localStreams.includes(e)||this._localStreams.push(e):this._localStreams=[e]}),t.apply(this,arguments)}}"removeStream"in e.RTCPeerConnection.prototype||(e.RTCPeerConnection.prototype.removeStream=function(e){this._localStreams||(this._localStreams=[]);let t=this._localStreams.indexOf(e);if(-1===t)return;this._localStreams.splice(t,1);let n=e.getTracks();this.getSenders().forEach(e=>{n.includes(e.track)&&this.removeTrack(e)})})}}function eo(e){if("object"==typeof e&&e.RTCPeerConnection&&("getRemoteStreams"in e.RTCPeerConnection.prototype||(e.RTCPeerConnection.prototype.getRemoteStreams=function(){return this._remoteStreams?this._remoteStreams:[]}),!("onaddstream"in e.RTCPeerConnection.prototype))){Object.defineProperty(e.RTCPeerConnection.prototype,"onaddstream",{get(){return this._onaddstream},set(e){this._onaddstream&&(this.removeEventListener("addstream",this._onaddstream),this.removeEventListener("track",this._onaddstreampoly)),this.addEventListener("addstream",this._onaddstream=e),this.addEventListener("track",this._onaddstreampoly=e=>{e.streams.forEach(e=>{if(this._remoteStreams||(this._remoteStreams=[]),this._remoteStreams.includes(e))return;this._remoteStreams.push(e);let t=new Event("addstream");t.stream=e,this.dispatchEvent(t)})})}});let t=e.RTCPeerConnection.prototype.setRemoteDescription;e.RTCPeerConnection.prototype.setRemoteDescription=function(){let e=this;return this._onaddstreampoly||this.addEventListener("track",this._onaddstreampoly=function(t){t.streams.forEach(t=>{if(e._remoteStreams||(e._remoteStreams=[]),e._remoteStreams.indexOf(t)>=0)return;e._remoteStreams.push(t);let n=new Event("addstream");n.stream=t,e.dispatchEvent(n)})}),t.apply(e,arguments)}}}function es(e){if("object"!=typeof e||!e.RTCPeerConnection)return;let t=e.RTCPeerConnection.prototype,n=t.createOffer,r=t.createAnswer,i=t.setLocalDescription,o=t.setRemoteDescription,s=t.addIceCandidate;t.createOffer=function(e,t){let r=arguments.length>=2?arguments[2]:arguments[0],i=n.apply(this,[r]);return t?(i.then(e,t),Promise.resolve()):i},t.createAnswer=function(e,t){let n=arguments.length>=2?arguments[2]:arguments[0],i=r.apply(this,[n]);return t?(i.then(e,t),Promise.resolve()):i};let a=function(e,t,n){let r=i.apply(this,[e]);return n?(r.then(t,n),Promise.resolve()):r};t.setLocalDescription=a,a=function(e,t,n){let r=o.apply(this,[e]);return n?(r.then(t,n),Promise.resolve()):r},t.setRemoteDescription=a,a=function(e,t,n){let r=s.apply(this,[e]);return n?(r.then(t,n),Promise.resolve()):r},t.addIceCandidate=a}function ea(e){let t=e&&e.navigator;if(t.mediaDevices&&t.mediaDevices.getUserMedia){let e=t.mediaDevices,n=e.getUserMedia.bind(e);t.mediaDevices.getUserMedia=e=>n(ec(e))}!t.getUserMedia&&t.mediaDevices&&t.mediaDevices.getUserMedia&&(t.getUserMedia=(function(e,n,r){t.mediaDevices.getUserMedia(e).then(n,r)}).bind(t))}function ec(e){return e&&void 0!==e.video?Object.assign({},e,{video:function e(t){return g(t)?Object.keys(t).reduce(function(n,r){let i=g(t[r]),o=i?e(t[r]):t[r],s=i&&!Object.keys(o).length;return void 0===o||s?n:Object.assign(n,{[r]:o})},{}):t}(e.video)}):e}function el(e){if(!e.RTCPeerConnection)return;let t=e.RTCPeerConnection;e.RTCPeerConnection=function(e,n){if(e&&e.iceServers){let t=[];for(let n=0;n<e.iceServers.length;n++){let r=e.iceServers[n];void 0===r.urls&&r.url?(m("RTCIceServer.url","RTCIceServer.urls"),(r=JSON.parse(JSON.stringify(r))).urls=r.url,delete r.url,t.push(r)):t.push(e.iceServers[n])}e.iceServers=t}return new t(e,n)},e.RTCPeerConnection.prototype=t.prototype,"generateCertificate"in t&&Object.defineProperty(e.RTCPeerConnection,"generateCertificate",{get:()=>t.generateCertificate})}function ep(e){"object"==typeof e&&e.RTCTrackEvent&&"receiver"in e.RTCTrackEvent.prototype&&!("transceiver"in e.RTCTrackEvent.prototype)&&Object.defineProperty(e.RTCTrackEvent.prototype,"transceiver",{get(){return{receiver:this.receiver}}})}function ed(e){let t=e.RTCPeerConnection.prototype.createOffer;e.RTCPeerConnection.prototype.createOffer=function(e){if(e){void 0!==e.offerToReceiveAudio&&(e.offerToReceiveAudio=!!e.offerToReceiveAudio);let t=this.getTransceivers().find(e=>"audio"===e.receiver.track.kind);!1===e.offerToReceiveAudio&&t?"sendrecv"===t.direction?t.setDirection?t.setDirection("sendonly"):t.direction="sendonly":"recvonly"===t.direction&&(t.setDirection?t.setDirection("inactive"):t.direction="inactive"):!0!==e.offerToReceiveAudio||t||this.addTransceiver("audio",{direction:"recvonly"}),void 0!==e.offerToReceiveVideo&&(e.offerToReceiveVideo=!!e.offerToReceiveVideo);let n=this.getTransceivers().find(e=>"video"===e.receiver.track.kind);!1===e.offerToReceiveVideo&&n?"sendrecv"===n.direction?n.setDirection?n.setDirection("sendonly"):n.direction="sendonly":"recvonly"===n.direction&&(n.setDirection?n.setDirection("inactive"):n.direction="inactive"):!0!==e.offerToReceiveVideo||n||this.addTransceiver("video",{direction:"recvonly"})}return t.apply(this,arguments)}}function eh(e){"object"!=typeof e||e.AudioContext||(e.AudioContext=e.webkitAudioContext)}e(er,"shimLocalStreamsAPI",()=>ei),e(er,"shimRemoteStreamsAPI",()=>eo),e(er,"shimCallbacksAPI",()=>es),e(er,"shimGetUserMedia",()=>ea),e(er,"shimConstraints",()=>ec),e(er,"shimRTCIceServerUrls",()=>el),e(er,"shimTrackEventTransceiver",()=>ep),e(er,"shimCreateOfferLegacy",()=>ed),e(er,"shimAudioContext",()=>eh);var eu={};e(eu,"shimRTCIceCandidate",()=>eg),e(eu,"shimRTCIceCandidateRelayProtocol",()=>ey),e(eu,"shimMaxMessageSize",()=>e_),e(eu,"shimSendThrowTypeError",()=>eC),e(eu,"shimConnectionState",()=>eb),e(eu,"removeExtmapAllowMixed",()=>ev),e(eu,"shimAddIceCandidateNullOrEmpty",()=>ek),e(eu,"shimParameterlessSetLocalDescription",()=>eT);var ef={};let em={};function eg(e){if(!e.RTCIceCandidate||e.RTCIceCandidate&&"foundation"in e.RTCIceCandidate.prototype)return;let n=e.RTCIceCandidate;e.RTCIceCandidate=function(e){if("object"==typeof e&&e.candidate&&0===e.candidate.indexOf("a=")&&((e=JSON.parse(JSON.stringify(e))).candidate=e.candidate.substring(2)),e.candidate&&e.candidate.length){let r=new n(e),i=t(ef).parseCandidate(e.candidate);for(let e in i)e in r||Object.defineProperty(r,e,{value:i[e]});return r.toJSON=function(){return{candidate:r.candidate,sdpMid:r.sdpMid,sdpMLineIndex:r.sdpMLineIndex,usernameFragment:r.usernameFragment}},r}return new n(e)},e.RTCIceCandidate.prototype=n.prototype,d(e,"icecandidate",t=>(t.candidate&&Object.defineProperty(t,"candidate",{value:new e.RTCIceCandidate(t.candidate),writable:"false"}),t))}function ey(e){!e.RTCIceCandidate||e.RTCIceCandidate&&"relayProtocol"in e.RTCIceCandidate.prototype||d(e,"icecandidate",e=>{if(e.candidate){let n=t(ef).parseCandidate(e.candidate.candidate);"relay"===n.type&&(e.candidate.relayProtocol=({0:"tls",1:"tcp",2:"udp"})[n.priority>>24])}return e})}function e_(e,n){if(!e.RTCPeerConnection)return;"sctp"in e.RTCPeerConnection.prototype||Object.defineProperty(e.RTCPeerConnection.prototype,"sctp",{get(){return void 0===this._sctp?null:this._sctp}});let r=function(e){if(!e||!e.sdp)return!1;let n=t(ef).splitSections(e.sdp);return n.shift(),n.some(e=>{let n=t(ef).parseMLine(e);return n&&"application"===n.kind&&-1!==n.protocol.indexOf("SCTP")})},i=function(e){let t=e.sdp.match(/mozilla...THIS_IS_SDPARTA-(\d+)/);if(null===t||t.length<2)return -1;let n=parseInt(t[1],10);return n!=n?-1:n},o=function(e){let t=65536;return"firefox"===n.browser&&(t=n.version<57?-1===e?16384:2147483637:n.version<60?57===n.version?65535:65536:2147483637),t},s=function(e,r){let i=65536;"firefox"===n.browser&&57===n.version&&(i=65535);let o=t(ef).matchPrefix(e.sdp,"a=max-message-size:");return o.length>0?i=parseInt(o[0].substring(19),10):"firefox"===n.browser&&-1!==r&&(i=2147483637),i},a=e.RTCPeerConnection.prototype.setRemoteDescription;e.RTCPeerConnection.prototype.setRemoteDescription=function(){if(this._sctp=null,"chrome"===n.browser&&n.version>=76){let{sdpSemantics:e}=this.getConfiguration();"plan-b"===e&&Object.defineProperty(this,"sctp",{get(){return void 0===this._sctp?null:this._sctp},enumerable:!0,configurable:!0})}if(r(arguments[0])){let e;let t=i(arguments[0]),n=o(t),r=s(arguments[0],t);e=0===n&&0===r?Number.POSITIVE_INFINITY:0===n||0===r?Math.max(n,r):Math.min(n,r);let a={};Object.defineProperty(a,"maxMessageSize",{get:()=>e}),this._sctp=a}return a.apply(this,arguments)}}function eC(e){if(!(e.RTCPeerConnection&&"createDataChannel"in e.RTCPeerConnection.prototype))return;function t(e,t){let n=e.send;e.send=function(){let r=arguments[0],i=r.length||r.size||r.byteLength;if("open"===e.readyState&&t.sctp&&i>t.sctp.maxMessageSize)throw TypeError("Message too large (can send a maximum of "+t.sctp.maxMessageSize+" bytes)");return n.apply(e,arguments)}}let n=e.RTCPeerConnection.prototype.createDataChannel;e.RTCPeerConnection.prototype.createDataChannel=function(){let e=n.apply(this,arguments);return t(e,this),e},d(e,"datachannel",e=>(t(e.channel,e.target),e))}function eb(e){if(!e.RTCPeerConnection||"connectionState"in e.RTCPeerConnection.prototype)return;let t=e.RTCPeerConnection.prototype;Object.defineProperty(t,"connectionState",{get(){return({completed:"connected",checking:"connecting"})[this.iceConnectionState]||this.iceConnectionState},enumerable:!0,configurable:!0}),Object.defineProperty(t,"onconnectionstatechange",{get(){return this._onconnectionstatechange||null},set(e){this._onconnectionstatechange&&(this.removeEventListener("connectionstatechange",this._onconnectionstatechange),delete this._onconnectionstatechange),e&&this.addEventListener("connectionstatechange",this._onconnectionstatechange=e)},enumerable:!0,configurable:!0}),["setLocalDescription","setRemoteDescription"].forEach(e=>{let n=t[e];t[e]=function(){return this._connectionstatechangepoly||(this._connectionstatechangepoly=e=>{let t=e.target;if(t._lastConnectionState!==t.connectionState){t._lastConnectionState=t.connectionState;let n=new Event("connectionstatechange",e);t.dispatchEvent(n)}return e},this.addEventListener("iceconnectionstatechange",this._connectionstatechangepoly)),n.apply(this,arguments)}})}function ev(e,t){if(!e.RTCPeerConnection||"chrome"===t.browser&&t.version>=71||"safari"===t.browser&&t.version>=605)return;let n=e.RTCPeerConnection.prototype.setRemoteDescription;e.RTCPeerConnection.prototype.setRemoteDescription=function(t){if(t&&t.sdp&&-1!==t.sdp.indexOf("\na=extmap-allow-mixed")){let n=t.sdp.split("\n").filter(e=>"a=extmap-allow-mixed"!==e.trim()).join("\n");e.RTCSessionDescription&&t instanceof e.RTCSessionDescription?arguments[0]=new e.RTCSessionDescription({type:t.type,sdp:n}):t.sdp=n}return n.apply(this,arguments)}}function ek(e,t){if(!(e.RTCPeerConnection&&e.RTCPeerConnection.prototype))return;let n=e.RTCPeerConnection.prototype.addIceCandidate;n&&0!==n.length&&(e.RTCPeerConnection.prototype.addIceCandidate=function(){return arguments[0]?("chrome"===t.browser&&t.version<78||"firefox"===t.browser&&t.version<68||"safari"===t.browser)&&arguments[0]&&""===arguments[0].candidate?Promise.resolve():n.apply(this,arguments):(arguments[1]&&arguments[1].apply(null),Promise.resolve())})}function eT(e,t){if(!(e.RTCPeerConnection&&e.RTCPeerConnection.prototype))return;let n=e.RTCPeerConnection.prototype.setLocalDescription;n&&0!==n.length&&(e.RTCPeerConnection.prototype.setLocalDescription=function(){let e=arguments[0]||{};if("object"!=typeof e||e.type&&e.sdp)return n.apply(this,arguments);if(!(e={type:e.type,sdp:e.sdp}).type)switch(this.signalingState){case"stable":case"have-local-offer":case"have-remote-pranswer":e.type="offer";break;default:e.type="answer"}return e.sdp||"offer"!==e.type&&"answer"!==e.type?n.apply(this,[e]):("offer"===e.type?this.createOffer:this.createAnswer).apply(this).then(e=>n.apply(this,[e]))})}em.generateIdentifier=function(){return Math.random().toString(36).substring(2,12)},em.localCName=em.generateIdentifier(),em.splitLines=function(e){return e.trim().split("\n").map(e=>e.trim())},em.splitSections=function(e){return e.split("\nm=").map((e,t)=>(t>0?"m="+e:e).trim()+"\r\n")},em.getDescription=function(e){let t=em.splitSections(e);return t&&t[0]},em.getMediaSections=function(e){let t=em.splitSections(e);return t.shift(),t},em.matchPrefix=function(e,t){return em.splitLines(e).filter(e=>0===e.indexOf(t))},em.parseCandidate=function(e){let t;let n={foundation:(t=0===e.indexOf("a=candidate:")?e.substring(12).split(" "):e.substring(10).split(" "))[0],component:{1:"rtp",2:"rtcp"}[t[1]]||t[1],protocol:t[2].toLowerCase(),priority:parseInt(t[3],10),ip:t[4],address:t[4],port:parseInt(t[5],10),type:t[7]};for(let e=8;e<t.length;e+=2)switch(t[e]){case"raddr":n.relatedAddress=t[e+1];break;case"rport":n.relatedPort=parseInt(t[e+1],10);break;case"tcptype":n.tcpType=t[e+1];break;case"ufrag":n.ufrag=t[e+1],n.usernameFragment=t[e+1];break;default:void 0===n[t[e]]&&(n[t[e]]=t[e+1])}return n},em.writeCandidate=function(e){let t=[];t.push(e.foundation);let n=e.component;"rtp"===n?t.push(1):"rtcp"===n?t.push(2):t.push(n),t.push(e.protocol.toUpperCase()),t.push(e.priority),t.push(e.address||e.ip),t.push(e.port);let r=e.type;return t.push("typ"),t.push(r),"host"!==r&&e.relatedAddress&&e.relatedPort&&(t.push("raddr"),t.push(e.relatedAddress),t.push("rport"),t.push(e.relatedPort)),e.tcpType&&"tcp"===e.protocol.toLowerCase()&&(t.push("tcptype"),t.push(e.tcpType)),(e.usernameFragment||e.ufrag)&&(t.push("ufrag"),t.push(e.usernameFragment||e.ufrag)),"candidate:"+t.join(" ")},em.parseIceOptions=function(e){return e.substring(14).split(" ")},em.parseRtpMap=function(e){let t=e.substring(9).split(" "),n={payloadType:parseInt(t.shift(),10)};return t=t[0].split("/"),n.name=t[0],n.clockRate=parseInt(t[1],10),n.channels=3===t.length?parseInt(t[2],10):1,n.numChannels=n.channels,n},em.writeRtpMap=function(e){let t=e.payloadType;void 0!==e.preferredPayloadType&&(t=e.preferredPayloadType);let n=e.channels||e.numChannels||1;return"a=rtpmap:"+t+" "+e.name+"/"+e.clockRate+(1!==n?"/"+n:"")+"\r\n"},em.parseExtmap=function(e){let t=e.substring(9).split(" ");return{id:parseInt(t[0],10),direction:t[0].indexOf("/")>0?t[0].split("/")[1]:"sendrecv",uri:t[1],attributes:t.slice(2).join(" ")}},em.writeExtmap=function(e){return"a=extmap:"+(e.id||e.preferredId)+(e.direction&&"sendrecv"!==e.direction?"/"+e.direction:"")+" "+e.uri+(e.attributes?" "+e.attributes:"")+"\r\n"},em.parseFmtp=function(e){let t;let n={},r=e.substring(e.indexOf(" ")+1).split(";");for(let e=0;e<r.length;e++)n[(t=r[e].trim().split("="))[0].trim()]=t[1];return n},em.writeFmtp=function(e){let t="",n=e.payloadType;if(void 0!==e.preferredPayloadType&&(n=e.preferredPayloadType),e.parameters&&Object.keys(e.parameters).length){let r=[];Object.keys(e.parameters).forEach(t=>{void 0!==e.parameters[t]?r.push(t+"="+e.parameters[t]):r.push(t)}),t+="a=fmtp:"+n+" "+r.join(";")+"\r\n"}return t},em.parseRtcpFb=function(e){let t=e.substring(e.indexOf(" ")+1).split(" ");return{type:t.shift(),parameter:t.join(" ")}},em.writeRtcpFb=function(e){let t="",n=e.payloadType;return void 0!==e.preferredPayloadType&&(n=e.preferredPayloadType),e.rtcpFeedback&&e.rtcpFeedback.length&&e.rtcpFeedback.forEach(e=>{t+="a=rtcp-fb:"+n+" "+e.type+(e.parameter&&e.parameter.length?" "+e.parameter:"")+"\r\n"}),t},em.parseSsrcMedia=function(e){let t=e.indexOf(" "),n={ssrc:parseInt(e.substring(7,t),10)},r=e.indexOf(":",t);return r>-1?(n.attribute=e.substring(t+1,r),n.value=e.substring(r+1)):n.attribute=e.substring(t+1),n},em.parseSsrcGroup=function(e){let t=e.substring(13).split(" ");return{semantics:t.shift(),ssrcs:t.map(e=>parseInt(e,10))}},em.getMid=function(e){let t=em.matchPrefix(e,"a=mid:")[0];if(t)return t.substring(6)},em.parseFingerprint=function(e){let t=e.substring(14).split(" ");return{algorithm:t[0].toLowerCase(),value:t[1].toUpperCase()}},em.getDtlsParameters=function(e,t){return{role:"auto",fingerprints:em.matchPrefix(e+t,"a=fingerprint:").map(em.parseFingerprint)}},em.writeDtlsParameters=function(e,t){let n="a=setup:"+t+"\r\n";return e.fingerprints.forEach(e=>{n+="a=fingerprint:"+e.algorithm+" "+e.value+"\r\n"}),n},em.parseCryptoLine=function(e){let t=e.substring(9).split(" ");return{tag:parseInt(t[0],10),cryptoSuite:t[1],keyParams:t[2],sessionParams:t.slice(3)}},em.writeCryptoLine=function(e){return"a=crypto:"+e.tag+" "+e.cryptoSuite+" "+("object"==typeof e.keyParams?em.writeCryptoKeyParams(e.keyParams):e.keyParams)+(e.sessionParams?" "+e.sessionParams.join(" "):"")+"\r\n"},em.parseCryptoKeyParams=function(e){if(0!==e.indexOf("inline:"))return null;let t=e.substring(7).split("|");return{keyMethod:"inline",keySalt:t[0],lifeTime:t[1],mkiValue:t[2]?t[2].split(":")[0]:void 0,mkiLength:t[2]?t[2].split(":")[1]:void 0}},em.writeCryptoKeyParams=function(e){return e.keyMethod+":"+e.keySalt+(e.lifeTime?"|"+e.lifeTime:"")+(e.mkiValue&&e.mkiLength?"|"+e.mkiValue+":"+e.mkiLength:"")},em.getCryptoParameters=function(e,t){return em.matchPrefix(e+t,"a=crypto:").map(em.parseCryptoLine)},em.getIceParameters=function(e,t){let n=em.matchPrefix(e+t,"a=ice-ufrag:")[0],r=em.matchPrefix(e+t,"a=ice-pwd:")[0];return n&&r?{usernameFragment:n.substring(12),password:r.substring(10)}:null},em.writeIceParameters=function(e){let t="a=ice-ufrag:"+e.usernameFragment+"\r\na=ice-pwd:"+e.password+"\r\n";return e.iceLite&&(t+="a=ice-lite\r\n"),t},em.parseRtpParameters=function(e){let t={codecs:[],headerExtensions:[],fecMechanisms:[],rtcp:[]},n=em.splitLines(e)[0].split(" ");t.profile=n[2];for(let r=3;r<n.length;r++){let i=n[r],o=em.matchPrefix(e,"a=rtpmap:"+i+" ")[0];if(o){let n=em.parseRtpMap(o),r=em.matchPrefix(e,"a=fmtp:"+i+" ");switch(n.parameters=r.length?em.parseFmtp(r[0]):{},n.rtcpFeedback=em.matchPrefix(e,"a=rtcp-fb:"+i+" ").map(em.parseRtcpFb),t.codecs.push(n),n.name.toUpperCase()){case"RED":case"ULPFEC":t.fecMechanisms.push(n.name.toUpperCase())}}}em.matchPrefix(e,"a=extmap:").forEach(e=>{t.headerExtensions.push(em.parseExtmap(e))});let r=em.matchPrefix(e,"a=rtcp-fb:* ").map(em.parseRtcpFb);return t.codecs.forEach(e=>{r.forEach(t=>{e.rtcpFeedback.find(e=>e.type===t.type&&e.parameter===t.parameter)||e.rtcpFeedback.push(t)})}),t},em.writeRtpDescription=function(e,t){let n="";n+="m="+e+" "+(t.codecs.length>0?"9":"0")+" "+(t.profile||"UDP/TLS/RTP/SAVPF")+" "+t.codecs.map(e=>void 0!==e.preferredPayloadType?e.preferredPayloadType:e.payloadType).join(" ")+"\r\nc=IN IP4 0.0.0.0\r\na=rtcp:9 IN IP4 0.0.0.0\r\n",t.codecs.forEach(e=>{n+=em.writeRtpMap(e)+em.writeFmtp(e)+em.writeRtcpFb(e)});let r=0;return t.codecs.forEach(e=>{e.maxptime>r&&(r=e.maxptime)}),r>0&&(n+="a=maxptime:"+r+"\r\n"),t.headerExtensions&&t.headerExtensions.forEach(e=>{n+=em.writeExtmap(e)}),n},em.parseRtpEncodingParameters=function(e){let t;let n=[],r=em.parseRtpParameters(e),i=-1!==r.fecMechanisms.indexOf("RED"),o=-1!==r.fecMechanisms.indexOf("ULPFEC"),s=em.matchPrefix(e,"a=ssrc:").map(e=>em.parseSsrcMedia(e)).filter(e=>"cname"===e.attribute),a=s.length>0&&s[0].ssrc,c=em.matchPrefix(e,"a=ssrc-group:FID").map(e=>e.substring(17).split(" ").map(e=>parseInt(e,10)));c.length>0&&c[0].length>1&&c[0][0]===a&&(t=c[0][1]),r.codecs.forEach(e=>{if("RTX"===e.name.toUpperCase()&&e.parameters.apt){let r={ssrc:a,codecPayloadType:parseInt(e.parameters.apt,10)};a&&t&&(r.rtx={ssrc:t}),n.push(r),i&&((r=JSON.parse(JSON.stringify(r))).fec={ssrc:a,mechanism:o?"red+ulpfec":"red"},n.push(r))}}),0===n.length&&a&&n.push({ssrc:a});let l=em.matchPrefix(e,"b=");return l.length&&(l=0===l[0].indexOf("b=TIAS:")?parseInt(l[0].substring(7),10):0===l[0].indexOf("b=AS:")?950*parseInt(l[0].substring(5),10)-16e3:void 0,n.forEach(e=>{e.maxBitrate=l})),n},em.parseRtcpParameters=function(e){let t={},n=em.matchPrefix(e,"a=ssrc:").map(e=>em.parseSsrcMedia(e)).filter(e=>"cname"===e.attribute)[0];n&&(t.cname=n.value,t.ssrc=n.ssrc);let r=em.matchPrefix(e,"a=rtcp-rsize");t.reducedSize=r.length>0,t.compound=0===r.length;let i=em.matchPrefix(e,"a=rtcp-mux");return t.mux=i.length>0,t},em.writeRtcpParameters=function(e){let t="";return e.reducedSize&&(t+="a=rtcp-rsize\r\n"),e.mux&&(t+="a=rtcp-mux\r\n"),void 0!==e.ssrc&&e.cname&&(t+="a=ssrc:"+e.ssrc+" cname:"+e.cname+"\r\n"),t},em.parseMsid=function(e){let t;let n=em.matchPrefix(e,"a=msid:");if(1===n.length)return{stream:(t=n[0].substring(7).split(" "))[0],track:t[1]};let r=em.matchPrefix(e,"a=ssrc:").map(e=>em.parseSsrcMedia(e)).filter(e=>"msid"===e.attribute);if(r.length>0)return{stream:(t=r[0].value.split(" "))[0],track:t[1]}},em.parseSctpDescription=function(e){let t;let n=em.parseMLine(e),r=em.matchPrefix(e,"a=max-message-size:");r.length>0&&(t=parseInt(r[0].substring(19),10)),isNaN(t)&&(t=65536);let i=em.matchPrefix(e,"a=sctp-port:");if(i.length>0)return{port:parseInt(i[0].substring(12),10),protocol:n.fmt,maxMessageSize:t};let o=em.matchPrefix(e,"a=sctpmap:");if(o.length>0){let e=o[0].substring(10).split(" ");return{port:parseInt(e[0],10),protocol:e[1],maxMessageSize:t}}},em.writeSctpDescription=function(e,t){let n=[];return n="DTLS/SCTP"!==e.protocol?["m="+e.kind+" 9 "+e.protocol+" "+t.protocol+"\r\n","c=IN IP4 0.0.0.0\r\n","a=sctp-port:"+t.port+"\r\n"]:["m="+e.kind+" 9 "+e.protocol+" "+t.port+"\r\n","c=IN IP4 0.0.0.0\r\n","a=sctpmap:"+t.port+" "+t.protocol+" 65535\r\n"],void 0!==t.maxMessageSize&&n.push("a=max-message-size:"+t.maxMessageSize+"\r\n"),n.join("")},em.generateSessionId=function(){return Math.random().toString().substr(2,22)},em.writeSessionBoilerplate=function(e,t,n){return"v=0\r\no="+(n||"thisisadapterortc")+" "+(e||em.generateSessionId())+" "+(void 0!==t?t:2)+" IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n"},em.getDirection=function(e,t){let n=em.splitLines(e);for(let e=0;e<n.length;e++)switch(n[e]){case"a=sendrecv":case"a=sendonly":case"a=recvonly":case"a=inactive":return n[e].substring(2)}return t?em.getDirection(t):"sendrecv"},em.getKind=function(e){return em.splitLines(e)[0].split(" ")[0].substring(2)},em.isRejected=function(e){return"0"===e.split(" ",2)[1]},em.parseMLine=function(e){let t=em.splitLines(e)[0].substring(2).split(" ");return{kind:t[0],port:parseInt(t[1],10),protocol:t[2],fmt:t.slice(3).join(" ")}},em.parseOLine=function(e){let t=em.matchPrefix(e,"o=")[0].substring(2).split(" ");return{username:t[0],sessionId:t[1],sessionVersion:parseInt(t[2],10),netType:t[3],addressType:t[4],address:t[5]}},em.isValidSDP=function(e){if("string"!=typeof e||0===e.length)return!1;let t=em.splitLines(e);for(let e=0;e<t.length;e++)if(t[e].length<2||"="!==t[e].charAt(1))return!1;return!0},ef=em;let eS=function({window:e}={},t={shimChrome:!0,shimFirefox:!0,shimSafari:!0}){let n=function(e){let t={browser:null,version:null};if(void 0===e||!e.navigator||!e.navigator.userAgent)return t.browser="Not a browser.",t;let{navigator:n}=e;if(n.userAgentData&&n.userAgentData.brands){let e=n.userAgentData.brands.find(e=>"Chromium"===e.brand);if(e)return{browser:"chrome",version:parseInt(e.version,10)}}return n.mozGetUserMedia?(t.browser="firefox",t.version=p(n.userAgent,/Firefox\/(\d+)\./,1)):n.webkitGetUserMedia||!1===e.isSecureContext&&e.webkitRTCPeerConnection?(t.browser="chrome",t.version=p(n.userAgent,/Chrom(e|ium)\/(\d+)\./,2)):e.RTCPeerConnection&&n.userAgent.match(/AppleWebKit\/(\d+)\./)?(t.browser="safari",t.version=p(n.userAgent,/AppleWebKit\/(\d+)\./,1),t.supportsUnifiedPlan=e.RTCRtpTransceiver&&"currentDirection"in e.RTCRtpTransceiver.prototype):t.browser="Not a supported browser.",t}(e),r={browserDetails:n,commonShim:eu,extractVersion:p,disableLog:h,disableWarnings:u,sdp:ef};switch(n.browser){case"chrome":if(!j||!j.shimPeerConnection||!t.shimChrome){f("Chrome shim is not included in this adapter release.");break}if(null===n.version){f("Chrome shim can not determine version, not shimming.");break}f("adapter.js shimming chrome."),r.browserShim=j,ek(e,n),eT(e,n),j.shimGetUserMedia(e,n),j.shimMediaStream(e,n),j.shimPeerConnection(e,n),j.shimOnTrack(e,n),j.shimAddTrackRemoveTrack(e,n),j.shimGetSendersWithDtmf(e,n),j.shimSenderReceiverGetStats(e,n),j.fixNegotiationNeeded(e,n),eg(e,n),ey(e,n),eb(e,n),e_(e,n),eC(e,n),ev(e,n);break;case"firefox":if(!V||!V.shimPeerConnection||!t.shimFirefox){f("Firefox shim is not included in this adapter release.");break}f("adapter.js shimming firefox."),r.browserShim=V,ek(e,n),eT(e,n),V.shimGetUserMedia(e,n),V.shimPeerConnection(e,n),V.shimOnTrack(e,n),V.shimRemoveStream(e,n),V.shimSenderGetStats(e,n),V.shimReceiverGetStats(e,n),V.shimRTCDataChannel(e,n),V.shimAddTransceiver(e,n),V.shimGetParameters(e,n),V.shimCreateOffer(e,n),V.shimCreateAnswer(e,n),eg(e,n),eb(e,n),e_(e,n),eC(e,n);break;case"safari":if(!er||!t.shimSafari){f("Safari shim is not included in this adapter release.");break}f("adapter.js shimming safari."),r.browserShim=er,ek(e,n),eT(e,n),er.shimRTCIceServerUrls(e,n),er.shimCreateOfferLegacy(e,n),er.shimCallbacksAPI(e,n),er.shimLocalStreamsAPI(e,n),er.shimRemoteStreamsAPI(e,n),er.shimTrackEventTransceiver(e,n),er.shimGetUserMedia(e,n),er.shimAudioContext(e,n),eg(e,n),ey(e,n),e_(e,n),eC(e,n),ev(e,n);break;default:f("Unsupported browser!")}return r}({window:"undefined"==typeof window?void 0:window}),eR=eS.default||eS,eP=new class{isWebRTCSupported(){return"undefined"!=typeof RTCPeerConnection}isBrowserSupported(){let e=this.getBrowser(),t=this.getVersion();return!!this.supportedBrowsers.includes(e)&&("chrome"===e?t>=this.minChromeVersion:"firefox"===e?t>=this.minFirefoxVersion:"safari"===e&&!this.isIOS&&t>=this.minSafariVersion)}getBrowser(){return eR.browserDetails.browser}getVersion(){return eR.browserDetails.version||0}isUnifiedPlanSupported(){let e;let t=this.getBrowser(),n=eR.browserDetails.version||0;if("chrome"===t&&n<this.minChromeVersion)return!1;if("firefox"===t&&n>=this.minFirefoxVersion)return!0;if(!window.RTCRtpTransceiver||!("currentDirection"in RTCRtpTransceiver.prototype))return!1;let r=!1;try{(e=new RTCPeerConnection).addTransceiver("audio"),r=!0}catch(e){}finally{e&&e.close()}return r}toString(){return`Supports:
+    browser:${this.getBrowser()}
+    version:${this.getVersion()}
+    isIOS:${this.isIOS}
+    isWebRTCSupported:${this.isWebRTCSupported()}
+    isBrowserSupported:${this.isBrowserSupported()}
+    isUnifiedPlanSupported:${this.isUnifiedPlanSupported()}`}constructor(){this.isIOS="undefined"!=typeof navigator&&["iPad","iPhone","iPod"].includes(navigator.platform),this.supportedBrowsers=["firefox","chrome","safari"],this.minFirefoxVersion=59,this.minChromeVersion=72,this.minSafariVersion=605}},ew=e=>!e||/^[A-Za-z0-9]+(?:[ _-][A-Za-z0-9]+)*$/.test(e),eE=()=>Math.random().toString(36).slice(2),eD={iceServers:[{urls:"stun:stun.l.google.com:19302"},{urls:["turn:eu-0.turn.peerjs.com:3478","turn:us-0.turn.peerjs.com:3478"],username:"peerjs",credential:"peerjsp"}],sdpSemantics:"unified-plan"},ex=new class extends n{noop(){}blobToArrayBuffer(e,t){let n=new FileReader;return n.onload=function(e){e.target&&t(e.target.result)},n.readAsArrayBuffer(e),n}binaryStringToArrayBuffer(e){let t=new Uint8Array(e.length);for(let n=0;n<e.length;n++)t[n]=255&e.charCodeAt(n);return t.buffer}isSecure(){return"https:"===location.protocol}constructor(...e){super(...e),this.CLOUD_HOST="0.peerjs.com",this.CLOUD_PORT=443,this.chunkedBrowsers={Chrome:1,chrome:1},this.defaultConfig=eD,this.browser=eP.getBrowser(),this.browserVersion=eP.getVersion(),this.pack=o,this.unpack=i,this.supports=function(){let e;let t={browser:eP.isBrowserSupported(),webRTC:eP.isWebRTCSupported(),audioVideo:!1,data:!1,binaryBlob:!1,reliable:!1};if(!t.webRTC)return t;try{let n;e=new RTCPeerConnection(eD),t.audioVideo=!0;try{n=e.createDataChannel("_PEERJSTEST",{ordered:!0}),t.data=!0,t.reliable=!!n.ordered;try{n.binaryType="blob",t.binaryBlob=!eP.isIOS}catch(e){}}catch(e){}finally{n&&n.close()}}catch(e){}finally{e&&e.close()}return t}(),this.validateId=ew,this.randomToken=eE}};(_=P||(P={}))[_.Disabled=0]="Disabled",_[_.Errors=1]="Errors",_[_.Warnings=2]="Warnings",_[_.All=3]="All";var eI=new class{get logLevel(){return this._logLevel}set logLevel(e){this._logLevel=e}log(...e){this._logLevel>=3&&this._print(3,...e)}warn(...e){this._logLevel>=2&&this._print(2,...e)}error(...e){this._logLevel>=1&&this._print(1,...e)}setLogFunction(e){this._print=e}_print(e,...t){let n=["PeerJS: ",...t];for(let e in n)n[e]instanceof Error&&(n[e]="("+n[e].name+") "+n[e].message);e>=3?console.log(...n):e>=2?console.warn("WARNING",...n):e>=1&&console.error("ERROR",...n)}constructor(){this._logLevel=0}},eM={},eO=Object.prototype.hasOwnProperty,ej="~";function eL(){}function eA(e,t,n){this.fn=e,this.context=t,this.once=n||!1}function eB(e,t,n,r,i){if("function"!=typeof n)throw TypeError("The listener must be a function");var o=new eA(n,r||e,i),s=ej?ej+t:t;return e._events[s]?e._events[s].fn?e._events[s]=[e._events[s],o]:e._events[s].push(o):(e._events[s]=o,e._eventsCount++),e}function eF(e,t){0==--e._eventsCount?e._events=new eL:delete e._events[t]}function eU(){this._events=new eL,this._eventsCount=0}Object.create&&(eL.prototype=Object.create(null),new eL().__proto__||(ej=!1)),eU.prototype.eventNames=function(){var e,t,n=[];if(0===this._eventsCount)return n;for(t in e=this._events)eO.call(e,t)&&n.push(ej?t.slice(1):t);return Object.getOwnPropertySymbols?n.concat(Object.getOwnPropertySymbols(e)):n},eU.prototype.listeners=function(e){var t=ej?ej+e:e,n=this._events[t];if(!n)return[];if(n.fn)return[n.fn];for(var r=0,i=n.length,o=Array(i);r<i;r++)o[r]=n[r].fn;return o},eU.prototype.listenerCount=function(e){var t=ej?ej+e:e,n=this._events[t];return n?n.fn?1:n.length:0},eU.prototype.emit=function(e,t,n,r,i,o){var s=ej?ej+e:e;if(!this._events[s])return!1;var a,c,l=this._events[s],p=arguments.length;if(l.fn){switch(l.once&&this.removeListener(e,l.fn,void 0,!0),p){case 1:return l.fn.call(l.context),!0;case 2:return l.fn.call(l.context,t),!0;case 3:return l.fn.call(l.context,t,n),!0;case 4:return l.fn.call(l.context,t,n,r),!0;case 5:return l.fn.call(l.context,t,n,r,i),!0;case 6:return l.fn.call(l.context,t,n,r,i,o),!0}for(c=1,a=Array(p-1);c<p;c++)a[c-1]=arguments[c];l.fn.apply(l.context,a)}else{var d,h=l.length;for(c=0;c<h;c++)switch(l[c].once&&this.removeListener(e,l[c].fn,void 0,!0),p){case 1:l[c].fn.call(l[c].context);break;case 2:l[c].fn.call(l[c].context,t);break;case 3:l[c].fn.call(l[c].context,t,n);break;case 4:l[c].fn.call(l[c].context,t,n,r);break;default:if(!a)for(d=1,a=Array(p-1);d<p;d++)a[d-1]=arguments[d];l[c].fn.apply(l[c].context,a)}}return!0},eU.prototype.on=function(e,t,n){return eB(this,e,t,n,!1)},eU.prototype.once=function(e,t,n){return eB(this,e,t,n,!0)},eU.prototype.removeListener=function(e,t,n,r){var i=ej?ej+e:e;if(!this._events[i])return this;if(!t)return eF(this,i),this;var o=this._events[i];if(o.fn)o.fn!==t||r&&!o.once||n&&o.context!==n||eF(this,i);else{for(var s=0,a=[],c=o.length;s<c;s++)(o[s].fn!==t||r&&!o[s].once||n&&o[s].context!==n)&&a.push(o[s]);a.length?this._events[i]=1===a.length?a[0]:a:eF(this,i)}return this},eU.prototype.removeAllListeners=function(e){var t;return e?(t=ej?ej+e:e,this._events[t]&&eF(this,t)):(this._events=new eL,this._eventsCount=0),this},eU.prototype.off=eU.prototype.removeListener,eU.prototype.addListener=eU.prototype.on,eU.prefixed=ej,eU.EventEmitter=eU,eM=eU,(C=w||(w={})).Data="data",C.Media="media",(b=E||(E={})).BrowserIncompatible="browser-incompatible",b.Disconnected="disconnected",b.InvalidID="invalid-id",b.InvalidKey="invalid-key",b.Network="network",b.PeerUnavailable="peer-unavailable",b.SslUnavailable="ssl-unavailable",b.ServerError="server-error",b.SocketError="socket-error",b.SocketClosed="socket-closed",b.UnavailableID="unavailable-id",b.WebRTC="webrtc",(v=D||(D={})).NegotiationFailed="negotiation-failed",v.ConnectionClosed="connection-closed",(k=x||(x={})).NotOpenYet="not-open-yet",k.MessageToBig="message-too-big",(T=I||(I={})).Binary="binary",T.BinaryUTF8="binary-utf8",T.JSON="json",T.None="raw",(S=M||(M={})).Message="message",S.Disconnected="disconnected",S.Error="error",S.Close="close",(R=O||(O={})).Heartbeat="HEARTBEAT",R.Candidate="CANDIDATE",R.Offer="OFFER",R.Answer="ANSWER",R.Open="OPEN",R.Error="ERROR",R.IdTaken="ID-TAKEN",R.InvalidKey="INVALID-KEY",R.Leave="LEAVE",R.Expire="EXPIRE";var ez={};ez=JSON.parse('{"name":"peerjs","version":"1.5.4","keywords":["peerjs","webrtc","p2p","rtc"],"description":"PeerJS client","homepage":"https://peerjs.com","bugs":{"url":"https://github.com/peers/peerjs/issues"},"repository":{"type":"git","url":"https://github.com/peers/peerjs"},"license":"MIT","contributors":["Michelle Bu <michelle@michellebu.com>","afrokick <devbyru@gmail.com>","ericz <really.ez@gmail.com>","Jairo <kidandcat@gmail.com>","Jonas Gloning <34194370+jonasgloning@users.noreply.github.com>","Jairo Caro-Accino Viciana <jairo@galax.be>","Carlos Caballero <carlos.caballero.gonzalez@gmail.com>","hc <hheennrryy@gmail.com>","Muhammad Asif <capripio@gmail.com>","PrashoonB <prashoonbhattacharjee@gmail.com>","Harsh Bardhan Mishra <47351025+HarshCasper@users.noreply.github.com>","akotynski <aleksanderkotbury@gmail.com>","lmb <i@lmb.io>","Jairooo <jairocaro@msn.com>","Moritz Stückler <moritz.stueckler@gmail.com>","Simon <crydotsnakegithub@gmail.com>","Denis Lukov <denismassters@gmail.com>","Philipp Hancke <fippo@andyet.net>","Hans Oksendahl <hansoksendahl@gmail.com>","Jess <jessachandler@gmail.com>","khankuan <khankuan@gmail.com>","DUODVK <kurmanov.work@gmail.com>","XiZhao <kwang1imsa@gmail.com>","Matthias Lohr <matthias@lohr.me>","=frank tree <=frnktrb@googlemail.com>","Andre Eckardt <aeckardt@outlook.com>","Chris Cowan <agentme49@gmail.com>","Alex Chuev <alex@chuev.com>","alxnull <alxnull@e.mail.de>","Yemel Jardi <angel.jardi@gmail.com>","Ben Parnell <benjaminparnell.94@gmail.com>","Benny Lichtner <bennlich@gmail.com>","fresheneesz <bitetrudpublic@gmail.com>","bob.barstead@exaptive.com <bob.barstead@exaptive.com>","chandika <chandika@gmail.com>","emersion <contact@emersion.fr>","Christopher Van <cvan@users.noreply.github.com>","eddieherm <edhermoso@gmail.com>","Eduardo Pinho <enet4mikeenet@gmail.com>","Evandro Zanatta <ezanatta@tray.net.br>","Gardner Bickford <gardner@users.noreply.github.com>","Gian Luca <gianluca.cecchi@cynny.com>","PatrickJS <github@gdi2290.com>","jonnyf <github@jonathanfoss.co.uk>","Hizkia Felix <hizkifw@gmail.com>","Hristo Oskov <hristo.oskov@gmail.com>","Isaac Madwed <i.madwed@gmail.com>","Ilya Konanykhin <ilya.konanykhin@gmail.com>","jasonbarry <jasbarry@me.com>","Jonathan Burke <jonathan.burke.1311@googlemail.com>","Josh Hamit <josh.hamit@gmail.com>","Jordan Austin <jrax86@gmail.com>","Joel Wetzell <jwetzell@yahoo.com>","xizhao <kevin.wang@cloudera.com>","Alberto Torres <kungfoobar@gmail.com>","Jonathan Mayol <mayoljonathan@gmail.com>","Jefferson Felix <me@jsfelix.dev>","Rolf Erik Lekang <me@rolflekang.com>","Kevin Mai-Husan Chia <mhchia@users.noreply.github.com>","Pepijn de Vos <pepijndevos@gmail.com>","JooYoung <qkdlql@naver.com>","Tobias Speicher <rootcommander@gmail.com>","Steve Blaurock <sblaurock@gmail.com>","Kyrylo Shegeda <shegeda@ualberta.ca>","Diwank Singh Tomer <singh@diwank.name>","Sören Balko <Soeren.Balko@gmail.com>","Arpit Solanki <solankiarpit1997@gmail.com>","Yuki Ito <yuki@gnnk.net>","Artur Zayats <zag2art@gmail.com>"],"funding":{"type":"opencollective","url":"https://opencollective.com/peer"},"collective":{"type":"opencollective","url":"https://opencollective.com/peer"},"files":["dist/*"],"sideEffects":["lib/global.ts","lib/supports.ts"],"main":"dist/bundler.cjs","module":"dist/bundler.mjs","browser-minified":"dist/peerjs.min.js","browser-unminified":"dist/peerjs.js","browser-minified-msgpack":"dist/serializer.msgpack.mjs","types":"dist/types.d.ts","engines":{"node":">= 14"},"targets":{"types":{"source":"lib/exports.ts"},"main":{"source":"lib/exports.ts","sourceMap":{"inlineSources":true}},"module":{"source":"lib/exports.ts","includeNodeModules":["eventemitter3"],"sourceMap":{"inlineSources":true}},"browser-minified":{"context":"browser","outputFormat":"global","optimize":true,"engines":{"browsers":"chrome >= 83, edge >= 83, firefox >= 80, safari >= 15"},"source":"lib/global.ts"},"browser-unminified":{"context":"browser","outputFormat":"global","optimize":false,"engines":{"browsers":"chrome >= 83, edge >= 83, firefox >= 80, safari >= 15"},"source":"lib/global.ts"},"browser-minified-msgpack":{"context":"browser","outputFormat":"esmodule","isLibrary":true,"optimize":true,"engines":{"browsers":"chrome >= 83, edge >= 83, firefox >= 102, safari >= 15"},"source":"lib/dataconnection/StreamConnection/MsgPack.ts"}},"scripts":{"contributors":"git-authors-cli --print=false && prettier --write package.json && git add package.json package-lock.json && git commit -m \\"chore(contributors): update and sort contributors list\\"","check":"tsc --noEmit && tsc -p e2e/tsconfig.json --noEmit","watch":"parcel watch","build":"rm -rf dist && parcel build","prepublishOnly":"npm run build","test":"jest","test:watch":"jest --watch","coverage":"jest --coverage --collectCoverageFrom=\\"./lib/**\\"","format":"prettier --write .","format:check":"prettier --check .","semantic-release":"semantic-release","e2e":"wdio run e2e/wdio.local.conf.ts","e2e:bstack":"wdio run e2e/wdio.bstack.conf.ts"},"devDependencies":{"@parcel/config-default":"^2.9.3","@parcel/packager-ts":"^2.9.3","@parcel/transformer-typescript-tsc":"^2.9.3","@parcel/transformer-typescript-types":"^2.9.3","@semantic-release/changelog":"^6.0.1","@semantic-release/git":"^10.0.1","@swc/core":"^1.3.27","@swc/jest":"^0.2.24","@types/jasmine":"^4.3.4","@wdio/browserstack-service":"^8.11.2","@wdio/cli":"^8.11.2","@wdio/globals":"^8.11.2","@wdio/jasmine-framework":"^8.11.2","@wdio/local-runner":"^8.11.2","@wdio/spec-reporter":"^8.11.2","@wdio/types":"^8.10.4","http-server":"^14.1.1","jest":"^29.3.1","jest-environment-jsdom":"^29.3.1","mock-socket":"^9.0.0","parcel":"^2.9.3","prettier":"^3.0.0","semantic-release":"^21.0.0","ts-node":"^10.9.1","typescript":"^5.0.0","wdio-geckodriver-service":"^5.0.1"},"dependencies":{"@msgpack/msgpack":"^2.8.0","eventemitter3":"^4.0.7","peerjs-js-binarypack":"^2.1.0","webrtc-adapter":"^9.0.0"},"alias":{"process":false,"buffer":false}}');class eN extends eM.EventEmitter{start(e,t){this._id=e;let n=`${this._baseUrl}&id=${e}&token=${t}`;!this._socket&&this._disconnected&&(this._socket=new WebSocket(n+"&version="+ez.version),this._disconnected=!1,this._socket.onmessage=e=>{let t;try{t=JSON.parse(e.data),eI.log("Server message received:",t)}catch(t){eI.log("Invalid server message",e.data);return}this.emit(M.Message,t)},this._socket.onclose=e=>{this._disconnected||(eI.log("Socket closed.",e),this._cleanup(),this._disconnected=!0,this.emit(M.Disconnected))},this._socket.onopen=()=>{this._disconnected||(this._sendQueuedMessages(),eI.log("Socket open"),this._scheduleHeartbeat())})}_scheduleHeartbeat(){this._wsPingTimer=setTimeout(()=>{this._sendHeartbeat()},this.pingInterval)}_sendHeartbeat(){if(!this._wsOpen()){eI.log("Cannot send heartbeat, because socket closed");return}let e=JSON.stringify({type:O.Heartbeat});this._socket.send(e),this._scheduleHeartbeat()}_wsOpen(){return!!this._socket&&1===this._socket.readyState}_sendQueuedMessages(){let e=[...this._messagesQueue];for(let t of(this._messagesQueue=[],e))this.send(t)}send(e){if(this._disconnected)return;if(!this._id){this._messagesQueue.push(e);return}if(!e.type){this.emit(M.Error,"Invalid message");return}if(!this._wsOpen())return;let t=JSON.stringify(e);this._socket.send(t)}close(){this._disconnected||(this._cleanup(),this._disconnected=!0)}_cleanup(){this._socket&&(this._socket.onopen=this._socket.onmessage=this._socket.onclose=null,this._socket.close(),this._socket=void 0),clearTimeout(this._wsPingTimer)}constructor(e,t,n,r,i,o=5e3){super(),this.pingInterval=o,this._disconnected=!0,this._messagesQueue=[],this._baseUrl=(e?"wss://":"ws://")+t+":"+n+r+"peerjs?key="+i}}class e${startConnection(e){let t=this._startPeerConnection();if(this.connection.peerConnection=t,this.connection.type===w.Media&&e._stream&&this._addTracksToConnection(e._stream,t),e.originator){let n=this.connection,r={ordered:!!e.reliable},i=t.createDataChannel(n.label,r);n._initializeDataChannel(i),this._makeOffer()}else this.handleSDP("OFFER",e.sdp)}_startPeerConnection(){eI.log("Creating RTCPeerConnection.");let e=new RTCPeerConnection(this.connection.provider.options.config);return this._setupListeners(e),e}_setupListeners(e){let t=this.connection.peer,n=this.connection.connectionId,r=this.connection.type,i=this.connection.provider;eI.log("Listening for ICE candidates."),e.onicecandidate=e=>{e.candidate&&e.candidate.candidate&&(eI.log(`Received ICE candidates for ${t}:`,e.candidate),i.socket.send({type:O.Candidate,payload:{candidate:e.candidate,type:r,connectionId:n},dst:t}))},e.oniceconnectionstatechange=()=>{switch(e.iceConnectionState){case"failed":eI.log("iceConnectionState is failed, closing connections to "+t),this.connection.emitError(D.NegotiationFailed,"Negotiation of connection to "+t+" failed."),this.connection.close();break;case"closed":eI.log("iceConnectionState is closed, closing connections to "+t),this.connection.emitError(D.ConnectionClosed,"Connection to "+t+" closed."),this.connection.close();break;case"disconnected":eI.log("iceConnectionState changed to disconnected on the connection with "+t);break;case"completed":e.onicecandidate=()=>{}}this.connection.emit("iceStateChanged",e.iceConnectionState)},eI.log("Listening for data channel"),e.ondatachannel=e=>{eI.log("Received data channel");let r=e.channel;i.getConnection(t,n)._initializeDataChannel(r)},eI.log("Listening for remote stream"),e.ontrack=e=>{eI.log("Received remote stream");let r=e.streams[0],o=i.getConnection(t,n);o.type===w.Media&&this._addStreamToMediaConnection(r,o)}}cleanup(){eI.log("Cleaning up PeerConnection to "+this.connection.peer);let e=this.connection.peerConnection;if(!e)return;this.connection.peerConnection=null,e.onicecandidate=e.oniceconnectionstatechange=e.ondatachannel=e.ontrack=()=>{};let t="closed"!==e.signalingState,n=!1,r=this.connection.dataChannel;r&&(n=!!r.readyState&&"closed"!==r.readyState),(t||n)&&e.close()}async _makeOffer(){let e=this.connection.peerConnection,t=this.connection.provider;try{let n=await e.createOffer(this.connection.options.constraints);eI.log("Created offer."),this.connection.options.sdpTransform&&"function"==typeof this.connection.options.sdpTransform&&(n.sdp=this.connection.options.sdpTransform(n.sdp)||n.sdp);try{await e.setLocalDescription(n),eI.log("Set localDescription:",n,`for:${this.connection.peer}`);let r={sdp:n,type:this.connection.type,connectionId:this.connection.connectionId,metadata:this.connection.metadata};if(this.connection.type===w.Data){let e=this.connection;r={...r,label:e.label,reliable:e.reliable,serialization:e.serialization}}t.socket.send({type:O.Offer,payload:r,dst:this.connection.peer})}catch(e){"OperationError: Failed to set local offer sdp: Called in wrong state: kHaveRemoteOffer"!=e&&(t.emitError(E.WebRTC,e),eI.log("Failed to setLocalDescription, ",e))}}catch(e){t.emitError(E.WebRTC,e),eI.log("Failed to createOffer, ",e)}}async _makeAnswer(){let e=this.connection.peerConnection,t=this.connection.provider;try{let n=await e.createAnswer();eI.log("Created answer."),this.connection.options.sdpTransform&&"function"==typeof this.connection.options.sdpTransform&&(n.sdp=this.connection.options.sdpTransform(n.sdp)||n.sdp);try{await e.setLocalDescription(n),eI.log("Set localDescription:",n,`for:${this.connection.peer}`),t.socket.send({type:O.Answer,payload:{sdp:n,type:this.connection.type,connectionId:this.connection.connectionId},dst:this.connection.peer})}catch(e){t.emitError(E.WebRTC,e),eI.log("Failed to setLocalDescription, ",e)}}catch(e){t.emitError(E.WebRTC,e),eI.log("Failed to create answer, ",e)}}async handleSDP(e,t){t=new RTCSessionDescription(t);let n=this.connection.peerConnection,r=this.connection.provider;eI.log("Setting remote description",t);try{await n.setRemoteDescription(t),eI.log(`Set remoteDescription:${e} for:${this.connection.peer}`),"OFFER"===e&&await this._makeAnswer()}catch(e){r.emitError(E.WebRTC,e),eI.log("Failed to setRemoteDescription, ",e)}}async handleCandidate(e){eI.log("handleCandidate:",e);try{await this.connection.peerConnection.addIceCandidate(e),eI.log(`Added ICE candidate for:${this.connection.peer}`)}catch(e){this.connection.provider.emitError(E.WebRTC,e),eI.log("Failed to handleCandidate, ",e)}}_addTracksToConnection(e,t){if(eI.log(`add tracks from stream ${e.id} to peer connection`),!t.addTrack)return eI.error("Your browser does't support RTCPeerConnection#addTrack. Ignored.");e.getTracks().forEach(n=>{t.addTrack(n,e)})}_addStreamToMediaConnection(e,t){eI.log(`add stream ${e.id} to media connection ${t.connectionId}`),t.addStream(e)}constructor(e){this.connection=e}}class eJ extends eM.EventEmitter{emitError(e,t){eI.error("Error:",t),this.emit("error",new eV(`${e}`,t))}}class eV extends Error{constructor(e,t){"string"==typeof t?super(t):(super(),Object.assign(this,t)),this.type=e}}class eG extends eJ{get open(){return this._open}constructor(e,t,n){super(),this.peer=e,this.provider=t,this.options=n,this._open=!1,this.metadata=n.metadata}}class eW extends eG{get type(){return w.Media}get localStream(){return this._localStream}get remoteStream(){return this._remoteStream}_initializeDataChannel(e){this.dataChannel=e,this.dataChannel.onopen=()=>{eI.log(`DC#${this.connectionId} dc connection success`),this.emit("willCloseOnRemote")},this.dataChannel.onclose=()=>{eI.log(`DC#${this.connectionId} dc closed for:`,this.peer),this.close()}}addStream(e){eI.log("Receiving stream",e),this._remoteStream=e,super.emit("stream",e)}handleMessage(e){let t=e.type,n=e.payload;switch(e.type){case O.Answer:this._negotiator.handleSDP(t,n.sdp),this._open=!0;break;case O.Candidate:this._negotiator.handleCandidate(n.candidate);break;default:eI.warn(`Unrecognized message type:${t} from peer:${this.peer}`)}}answer(e,t={}){if(this._localStream){eI.warn("Local stream already exists on this MediaConnection. Are you answering a call twice?");return}for(let n of(this._localStream=e,t&&t.sdpTransform&&(this.options.sdpTransform=t.sdpTransform),this._negotiator.startConnection({...this.options._payload,_stream:e}),this.provider._getMessages(this.connectionId)))this.handleMessage(n);this._open=!0}close(){this._negotiator&&(this._negotiator.cleanup(),this._negotiator=null),this._localStream=null,this._remoteStream=null,this.provider&&(this.provider._removeConnection(this),this.provider=null),this.options&&this.options._stream&&(this.options._stream=null),this.open&&(this._open=!1,super.emit("close"))}constructor(e,t,n){super(e,t,n),this._localStream=this.options._stream,this.connectionId=this.options.connectionId||eW.ID_PREFIX+ex.randomToken(),this._negotiator=new e$(this),this._localStream&&this._negotiator.startConnection({_stream:this._localStream,originator:!0})}}eW.ID_PREFIX="mc_";class eH{_buildRequest(e){let t=this._options.secure?"https":"http",{host:n,port:r,path:i,key:o}=this._options,s=new URL(`${t}://${n}:${r}${i}${o}/${e}`);return s.searchParams.set("ts",`${Date.now()}${Math.random()}`),s.searchParams.set("version",ez.version),fetch(s.href,{referrerPolicy:this._options.referrerPolicy})}async retrieveId(){try{let e=await this._buildRequest("id");if(200!==e.status)throw Error(`Error. Status:${e.status}`);return e.text()}catch(t){eI.error("Error retrieving ID",t);let e="";throw"/"===this._options.path&&this._options.host!==ex.CLOUD_HOST&&(e=" If you passed in a `path` to your self-hosted PeerServer, you'll also need to pass in that same path when creating a new Peer."),Error("Could not get an ID from the server."+e)}}async listAllPeers(){try{let e=await this._buildRequest("peers");if(200!==e.status){if(401===e.status){let e="";throw e=this._options.host===ex.CLOUD_HOST?"It looks like you're using the cloud server. You can email team@peerjs.com to enable peer listing for your API key.":"You need to enable `allow_discovery` on your self-hosted PeerServer to use this feature.",Error("It doesn't look like you have permission to list peers IDs. "+e)}throw Error(`Error. Status:${e.status}`)}return e.json()}catch(e){throw eI.error("Error retrieving list peers",e),Error("Could not get list peers from the server."+e)}}constructor(e){this._options=e}}class eY extends eG{get type(){return w.Data}_initializeDataChannel(e){this.dataChannel=e,this.dataChannel.onopen=()=>{eI.log(`DC#${this.connectionId} dc connection success`),this._open=!0,this.emit("open")},this.dataChannel.onmessage=e=>{eI.log(`DC#${this.connectionId} dc onmessage:`,e.data)},this.dataChannel.onclose=()=>{eI.log(`DC#${this.connectionId} dc closed for:`,this.peer),this.close()}}close(e){if(e?.flush){this.send({__peerData:{type:"close"}});return}this._negotiator&&(this._negotiator.cleanup(),this._negotiator=null),this.provider&&(this.provider._removeConnection(this),this.provider=null),this.dataChannel&&(this.dataChannel.onopen=null,this.dataChannel.onmessage=null,this.dataChannel.onclose=null,this.dataChannel=null),this.open&&(this._open=!1,super.emit("close"))}send(e,t=!1){if(!this.open){this.emitError(x.NotOpenYet,"Connection is not open. You should listen for the `open` event before sending messages.");return}return this._send(e,t)}async handleMessage(e){let t=e.payload;switch(e.type){case O.Answer:await this._negotiator.handleSDP(e.type,t.sdp);break;case O.Candidate:await this._negotiator.handleCandidate(t.candidate);break;default:eI.warn("Unrecognized message type:",e.type,"from peer:",this.peer)}}constructor(e,t,n){super(e,t,n),this.connectionId=this.options.connectionId||eY.ID_PREFIX+eE(),this.label=this.options.label||this.connectionId,this.reliable=!!this.options.reliable,this._negotiator=new e$(this),this._negotiator.startConnection(this.options._payload||{originator:!0,reliable:this.reliable})}}eY.ID_PREFIX="dc_",eY.MAX_BUFFERED_AMOUNT=8388608;class eK extends eY{get bufferSize(){return this._bufferSize}_initializeDataChannel(e){super._initializeDataChannel(e),this.dataChannel.binaryType="arraybuffer",this.dataChannel.addEventListener("message",e=>this._handleDataMessage(e))}_bufferedSend(e){(this._buffering||!this._trySend(e))&&(this._buffer.push(e),this._bufferSize=this._buffer.length)}_trySend(e){if(!this.open)return!1;if(this.dataChannel.bufferedAmount>eY.MAX_BUFFERED_AMOUNT)return this._buffering=!0,setTimeout(()=>{this._buffering=!1,this._tryBuffer()},50),!1;try{this.dataChannel.send(e)}catch(e){return eI.error(`DC#:${this.connectionId} Error when sending:`,e),this._buffering=!0,this.close(),!1}return!0}_tryBuffer(){if(!this.open||0===this._buffer.length)return;let e=this._buffer[0];this._trySend(e)&&(this._buffer.shift(),this._bufferSize=this._buffer.length,this._tryBuffer())}close(e){if(e?.flush){this.send({__peerData:{type:"close"}});return}this._buffer=[],this._bufferSize=0,super.close()}constructor(...e){super(...e),this._buffer=[],this._bufferSize=0,this._buffering=!1}}class eX extends eK{close(e){super.close(e),this._chunkedData={}}_handleDataMessage({data:e}){let t=i(e),n=t.__peerData;if(n){if("close"===n.type){this.close();return}this._handleChunk(t);return}this.emit("data",t)}_handleChunk(e){let t=e.__peerData,n=this._chunkedData[t]||{data:[],count:0,total:e.total};if(n.data[e.n]=new Uint8Array(e.data),n.count++,this._chunkedData[t]=n,n.total===n.count){delete this._chunkedData[t];let e=function(e){let t=0;for(let n of e)t+=n.byteLength;let n=new Uint8Array(t),r=0;for(let t of e)n.set(t,r),r+=t.byteLength;return n}(n.data);this._handleDataMessage({data:e})}}_send(e,t){let n=o(e);if(n instanceof Promise)return this._send_blob(n);if(!t&&n.byteLength>this.chunker.chunkedMTU){this._sendChunks(n);return}this._bufferedSend(n)}async _send_blob(e){let t=await e;if(t.byteLength>this.chunker.chunkedMTU){this._sendChunks(t);return}this._bufferedSend(t)}_sendChunks(e){let t=this.chunker.chunk(e);for(let e of(eI.log(`DC#${this.connectionId} Try to send ${t.length} chunks...`),t))this.send(e,!0)}constructor(e,t,r){super(e,t,r),this.chunker=new n,this.serialization=I.Binary,this._chunkedData={}}}class eq extends eK{_handleDataMessage({data:e}){super.emit("data",e)}_send(e,t){this._bufferedSend(e)}constructor(...e){super(...e),this.serialization=I.None}}class eQ extends eK{_handleDataMessage({data:e}){let t=this.parse(this.decoder.decode(e)),n=t.__peerData;if(n&&"close"===n.type){this.close();return}this.emit("data",t)}_send(e,t){let n=this.encoder.encode(this.stringify(e));if(n.byteLength>=ex.chunkedMTU){this.emitError(x.MessageToBig,"Message too big for JSON channel");return}this._bufferedSend(n)}constructor(...e){super(...e),this.serialization=I.JSON,this.encoder=new TextEncoder,this.decoder=new TextDecoder,this.stringify=JSON.stringify,this.parse=JSON.parse}}class eZ extends eJ{get id(){return this._id}get options(){return this._options}get open(){return this._open}get socket(){return this._socket}get connections(){let e=Object.create(null);for(let[t,n]of this._connections)e[t]=n;return e}get destroyed(){return this._destroyed}get disconnected(){return this._disconnected}_createServerConnection(){let e=new eN(this._options.secure,this._options.host,this._options.port,this._options.path,this._options.key,this._options.pingInterval);return e.on(M.Message,e=>{this._handleMessage(e)}),e.on(M.Error,e=>{this._abort(E.SocketError,e)}),e.on(M.Disconnected,()=>{this.disconnected||(this.emitError(E.Network,"Lost connection to server."),this.disconnect())}),e.on(M.Close,()=>{this.disconnected||this._abort(E.SocketClosed,"Underlying socket is already closed.")}),e}_initialize(e){this._id=e,this.socket.start(e,this._options.token)}_handleMessage(e){let t=e.type,n=e.payload,r=e.src;switch(t){case O.Open:this._lastServerId=this.id,this._open=!0,this.emit("open",this.id);break;case O.Error:this._abort(E.ServerError,n.msg);break;case O.IdTaken:this._abort(E.UnavailableID,`ID "${this.id}" is taken`);break;case O.InvalidKey:this._abort(E.InvalidKey,`API KEY "${this._options.key}" is invalid`);break;case O.Leave:eI.log(`Received leave message from ${r}`),this._cleanupPeer(r),this._connections.delete(r);break;case O.Expire:this.emitError(E.PeerUnavailable,`Could not connect to peer ${r}`);break;case O.Offer:{let e=n.connectionId,t=this.getConnection(r,e);if(t&&(t.close(),eI.warn(`Offer received for existing Connection ID:${e}`)),n.type===w.Media){let i=new eW(r,this,{connectionId:e,_payload:n,metadata:n.metadata});t=i,this._addConnection(r,t),this.emit("call",i)}else if(n.type===w.Data){let i=new this._serializers[n.serialization](r,this,{connectionId:e,_payload:n,metadata:n.metadata,label:n.label,serialization:n.serialization,reliable:n.reliable});t=i,this._addConnection(r,t),this.emit("connection",i)}else{eI.warn(`Received malformed connection type:${n.type}`);return}for(let n of this._getMessages(e))t.handleMessage(n);break}default:{if(!n){eI.warn(`You received a malformed message from ${r} of type ${t}`);return}let i=n.connectionId,o=this.getConnection(r,i);o&&o.peerConnection?o.handleMessage(e):i?this._storeMessage(i,e):eI.warn("You received an unrecognized message:",e)}}}_storeMessage(e,t){this._lostMessages.has(e)||this._lostMessages.set(e,[]),this._lostMessages.get(e).push(t)}_getMessages(e){let t=this._lostMessages.get(e);return t?(this._lostMessages.delete(e),t):[]}connect(e,t={}){if(t={serialization:"default",...t},this.disconnected){eI.warn("You cannot connect to a new Peer because you called .disconnect() on this Peer and ended your connection with the server. You can create a new Peer to reconnect, or call reconnect on this peer if you believe its ID to still be available."),this.emitError(E.Disconnected,"Cannot connect to new Peer after disconnecting from server.");return}let n=new this._serializers[t.serialization](e,this,t);return this._addConnection(e,n),n}call(e,t,n={}){if(this.disconnected){eI.warn("You cannot connect to a new Peer because you called .disconnect() on this Peer and ended your connection with the server. You can create a new Peer to reconnect."),this.emitError(E.Disconnected,"Cannot connect to new Peer after disconnecting from server.");return}if(!t){eI.error("To call a peer, you must provide a stream from your browser's `getUserMedia`.");return}let r=new eW(e,this,{...n,_stream:t});return this._addConnection(e,r),r}_addConnection(e,t){eI.log(`add connection ${t.type}:${t.connectionId} to peerId:${e}`),this._connections.has(e)||this._connections.set(e,[]),this._connections.get(e).push(t)}_removeConnection(e){let t=this._connections.get(e.peer);if(t){let n=t.indexOf(e);-1!==n&&t.splice(n,1)}this._lostMessages.delete(e.connectionId)}getConnection(e,t){let n=this._connections.get(e);if(!n)return null;for(let e of n)if(e.connectionId===t)return e;return null}_delayedAbort(e,t){setTimeout(()=>{this._abort(e,t)},0)}_abort(e,t){eI.error("Aborting!"),this.emitError(e,t),this._lastServerId?this.disconnect():this.destroy()}destroy(){this.destroyed||(eI.log(`Destroy peer with ID:${this.id}`),this.disconnect(),this._cleanup(),this._destroyed=!0,this.emit("close"))}_cleanup(){for(let e of this._connections.keys())this._cleanupPeer(e),this._connections.delete(e);this.socket.removeAllListeners()}_cleanupPeer(e){let t=this._connections.get(e);if(t)for(let e of t)e.close()}disconnect(){if(this.disconnected)return;let e=this.id;eI.log(`Disconnect peer with ID:${e}`),this._disconnected=!0,this._open=!1,this.socket.close(),this._lastServerId=e,this._id=null,this.emit("disconnected",e)}reconnect(){if(this.disconnected&&!this.destroyed)eI.log(`Attempting reconnection to server with ID ${this._lastServerId}`),this._disconnected=!1,this._initialize(this._lastServerId);else if(this.destroyed)throw Error("This peer cannot reconnect to the server. It has already been destroyed.");else if(this.disconnected||this.open)throw Error(`Peer ${this.id} cannot reconnect because it is not disconnected from the server!`);else eI.error("In a hurry? We're still trying to make the initial connection!")}listAllPeers(e=e=>{}){this._api.listAllPeers().then(t=>e(t)).catch(e=>this._abort(E.ServerError,e))}constructor(e,t){let n;if(super(),this._serializers={raw:eq,json:eQ,binary:eX,"binary-utf8":eX,default:eX},this._id=null,this._lastServerId=null,this._destroyed=!1,this._disconnected=!1,this._open=!1,this._connections=new Map,this._lostMessages=new Map,e&&e.constructor==Object?t=e:e&&(n=e.toString()),t={debug:0,host:ex.CLOUD_HOST,port:ex.CLOUD_PORT,path:"/",key:eZ.DEFAULT_KEY,token:ex.randomToken(),config:ex.defaultConfig,referrerPolicy:"strict-origin-when-cross-origin",serializers:{},...t},this._options=t,this._serializers={...this._serializers,...this.options.serializers},"/"===this._options.host&&(this._options.host=window.location.hostname),this._options.path&&("/"!==this._options.path[0]&&(this._options.path="/"+this._options.path),"/"!==this._options.path[this._options.path.length-1]&&(this._options.path+="/")),void 0===this._options.secure&&this._options.host!==ex.CLOUD_HOST?this._options.secure=ex.isSecure():this._options.host==ex.CLOUD_HOST&&(this._options.secure=!0),this._options.logFunction&&eI.setLogFunction(this._options.logFunction),eI.logLevel=this._options.debug||0,this._api=new eH(t),this._socket=this._createServerConnection(),!ex.supports.audioVideo&&!ex.supports.data){this._delayedAbort(E.BrowserIncompatible,"The current browser does not support WebRTC");return}if(n&&!ex.validateId(n)){this._delayedAbort(E.InvalidID,`ID "${n}" is invalid`);return}n?this._initialize(n):this._api.retrieveId().then(e=>this._initialize(e)).catch(e=>this._abort(E.ServerError,e))}}eZ.DEFAULT_KEY="peerjs",window.peerjs={Peer:eZ,util:ex},window.Peer=eZ})();
+
+
+</script>
+<script>
+// Chess Uno 규칙 엔진 (UI와 분리된 순수 로직). 브라우저와 Node 양쪽에서 동작.
+// 보드: 길이 64 배열, index = row*8 + file, row 0 = 8랭크. 기물: 'wp','bk' 등 (색+종류).
+const ChessUno = (() => {
+  const opp = (c) => (c === 'w' ? 'b' : 'w');
+  const sqName = (i) => 'abcdefgh'[i % 8] + (8 - (i >> 3));
+
+  function initialChess() {
+    const back = ['r', 'n', 'b', 'q', 'k', 'b', 'n', 'r'];
+    const b = new Array(64).fill(null);
+    for (let f = 0; f < 8; f++) {
+      b[f] = 'b' + back[f];
+      b[8 + f] = 'bp';
+      b[48 + f] = 'wp';
+      b[56 + f] = 'w' + back[f];
+    }
+    return { b, castle: { wK: true, wQ: true, bK: true, bQ: true }, ep: null, epColor: null };
+  }
+
+  const cloneChess = (s) => ({ b: s.b.slice(), castle: { ...s.castle }, ep: s.ep, epColor: s.epColor });
+
+  const KNIGHT = [[-2, -1], [-2, 1], [-1, -2], [-1, 2], [1, -2], [1, 2], [2, -1], [2, 1]];
+  const KING = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]];
+  const DIAG = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
+  const ORTH = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+  const on = (r, f) => r >= 0 && r < 8 && f >= 0 && f < 8;
+
+  // sq 칸이 by 색 기물에게 공격받는지
+  function attacked(b, sq, by) {
+    const r = sq >> 3, f = sq % 8;
+    const pr = by === 'w' ? r + 1 : r - 1; // 공격하는 폰이 있을 행
+    for (const df of [-1, 1]) if (on(pr, f + df) && b[pr * 8 + f + df] === by + 'p') return true;
+    for (const [dr, df] of KNIGHT) if (on(r + dr, f + df) && b[(r + dr) * 8 + f + df] === by + 'n') return true;
+    for (const [dr, df] of KING) if (on(r + dr, f + df) && b[(r + dr) * 8 + f + df] === by + 'k') return true;
+    const ray = (dirs, types) => {
+      for (const [dr, df] of dirs) {
+        let rr = r + dr, ff = f + df;
+        while (on(rr, ff)) {
+          const p = b[rr * 8 + ff];
+          if (p) { if (p[0] === by && types.includes(p[1])) return true; break; }
+          rr += dr; ff += df;
+        }
+      }
+      return false;
+    };
+    return ray(DIAG, 'bq') || ray(ORTH, 'rq');
+  }
+
+  const kingSq = (b, c) => b.indexOf(c + 'k');
+  const inCheck = (s, c) => { const k = kingSq(s.b, c); return k >= 0 && attacked(s.b, k, opp(c)); };
+
+  // 의사합법수(pseudo-legal move): 자기 킹 안전을 따지지 않은 기물 이동 규칙상의 수
+  function pseudo(s, from) {
+    const b = s.b, p = b[from];
+    if (!p) return [];
+    const c = p[0], t = p[1], r = from >> 3, f = from % 8, out = [];
+    const add = (to, flag) => out.push({ from, to, flag: flag || null, promo: t === 'p' && (to >> 3 === 0 || to >> 3 === 7) });
+    const step = (dirs) => { for (const [dr, df] of dirs) { const rr = r + dr, ff = f + df; if (on(rr, ff)) { const q = b[rr * 8 + ff]; if (!q || q[0] !== c) add(rr * 8 + ff); } } };
+    const slide = (dirs) => { for (const [dr, df] of dirs) { let rr = r + dr, ff = f + df; while (on(rr, ff)) { const q = b[rr * 8 + ff]; if (!q) add(rr * 8 + ff); else { if (q[0] !== c) add(rr * 8 + ff); break; } rr += dr; ff += df; } } };
+    if (t === 'p') {
+      const d = c === 'w' ? -1 : 1, start = c === 'w' ? 6 : 1;
+      if (on(r + d, f) && !b[(r + d) * 8 + f]) {
+        add((r + d) * 8 + f);
+        if (r === start && !b[(r + 2 * d) * 8 + f]) add((r + 2 * d) * 8 + f, 'dp');
+      }
+      for (const df of [-1, 1]) {
+        if (!on(r + d, f + df)) continue;
+        const to = (r + d) * 8 + f + df, q = b[to];
+        if (q && q[0] !== c) add(to);
+        else if (!q && s.ep === to && s.epColor !== c) add(to, 'ep');
+      }
+    } else if (t === 'n') step(KNIGHT);
+    else if (t === 'b') slide(DIAG);
+    else if (t === 'r') slide(ORTH);
+    else if (t === 'q') { slide(DIAG); slide(ORTH); }
+    else if (t === 'k') {
+      step(KING);
+      const home = c === 'w' ? 60 : 4, o = opp(c);
+      if (from === home && !attacked(b, home, o)) {
+        if (s.castle[c + 'K'] && b[home + 3] === c + 'r' && !b[home + 1] && !b[home + 2] &&
+          !attacked(b, home + 1, o) && !attacked(b, home + 2, o)) add(home + 2, 'ck');
+        if (s.castle[c + 'Q'] && b[home - 4] === c + 'r' && !b[home - 1] && !b[home - 2] && !b[home - 3] &&
+          !attacked(b, home - 1, o) && !attacked(b, home - 2, o)) add(home - 2, 'cq');
+      }
+    }
+    return out;
+  }
+
+  // 수를 보드에 적용. 잡힌 기물(없으면 null) 반환
+  function applyMove(s, m, promoType) {
+    const b = s.b, p = b[m.from], c = p[0];
+    let cap = b[m.to];
+    b[m.to] = p; b[m.from] = null;
+    if (m.flag === 'ep') { const v = m.to + (c === 'w' ? 8 : -8); cap = b[v]; b[v] = null; }
+    if (m.flag === 'ck') { b[m.to - 1] = b[m.to + 1]; b[m.to + 1] = null; }
+    if (m.flag === 'cq') { b[m.to + 1] = b[m.to - 2]; b[m.to - 2] = null; }
+    if (m.promo) b[m.to] = c + (promoType || 'q');
+    if (p[1] === 'k') { s.castle[c + 'K'] = false; s.castle[c + 'Q'] = false; }
+    for (const sq of [m.from, m.to]) {
+      if (sq === 63) s.castle.wK = false; if (sq === 56) s.castle.wQ = false;
+      if (sq === 7) s.castle.bK = false; if (sq === 0) s.castle.bQ = false;
+    }
+    if (m.flag === 'dp') { s.ep = (m.from + m.to) / 2; s.epColor = c; } else { s.ep = null; s.epColor = null; }
+    return cap;
+  }
+
+  // strict=true: 수를 둔 뒤 내 킹이 공격받지 않아야 함 (턴의 마지막 수에 적용). 상대 킹을 잡는 수는 항상 허용.
+  function movesFrom(s, from, strict) {
+    const ms = pseudo(s, from);
+    if (!strict) return ms;
+    const c = s.b[from][0];
+    return ms.filter((m) => {
+      if (s.b[m.to] === opp(c) + 'k') return true;
+      const t = cloneChess(s);
+      applyMove(t, m, 'q');
+      return !inCheck(t, c);
+    });
+  }
+
+  function hasMove(s, c, strict) {
+    for (let i = 0; i < 64; i++) if (s.b[i] && s.b[i][0] === c && movesFrom(s, i, strict).length) return true;
+    return false;
+  }
+
+  // ---------- 카드 덱 ----------
+  // 표준 108장 구성: 색 4종 × (0 한 장, 1~9 두 장씩, Skip·Reverse·Draw Two 두 장씩) + Wild 4 + Wild Draw Four 4
+  function buildDeck(rng) {
+    const d = [];
+    for (const color of ['red', 'yellow', 'green', 'blue']) {
+      d.push({ kind: 'num', n: 0, color });
+      for (let n = 1; n <= 9; n++) { d.push({ kind: 'num', n, color }); d.push({ kind: 'num', n, color }); }
+      for (const kind of ['skip', 'reverse', 'draw2']) { d.push({ kind, color }); d.push({ kind, color }); }
+    }
+    for (let i = 0; i < 4; i++) { d.push({ kind: 'wild', color: 'wild' }); d.push({ kind: 'wild4', color: 'wild' }); }
+    for (let i = d.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [d[i], d[j]] = [d[j], d[i]]; }
+    return d;
+  }
+
+  // ---------- 게임 진행 ----------
+  // phase: 'draw'(카드 뽑기) | 'wild'(숫자 선택) | 'move'(수 두기) | 'over'
+  function newGame(rng) {
+    rng = rng || Math.random;
+    return {
+      s: initialChess(), turn: 'w', phase: 'draw', movesLeft: 0, movesTotal: 0,
+      penalty: { w: false, b: false }, deck: buildDeck(rng), rng, cards: [], cardNote: '',
+      last: null, hi: null, taken: { w: [], b: [] }, winner: null, winReason: '', log: [], turnNo: 1, cardSeq: 0,
+    };
+  }
+
+  const NAME = { w: '백', b: '흑' };
+  const say = (g, text, cls) => { g.log.push({ text, cls: cls || '', turn: g.turn }); if (g.log.length > 200) g.log.splice(0, g.log.length - 200); };
+
+  function pop(g) {
+    // g.rng는 함수라 JSON으로 직렬화(전송·저장)하면 사라진다. 그때는 Math.random을 쓴다.
+    if (!g.deck.length) { g.deck = buildDeck(g.rng || Math.random); say(g, '덱을 다 써서 새로 섞었습니다.', 'sys'); }
+    return g.deck.pop();
+  }
+
+  function endTurn(g) {
+    g.turn = opp(g.turn); g.phase = 'draw'; g.movesLeft = 0; g.movesTotal = 0; g.turnNo++;
+  }
+
+  // 남은 수를 둘 수 있는지 점검. 마지막 수인데 킹을 지킬 방법이 없으면 패배(체크메이트).
+  function checkStuck(g) {
+    const c = g.turn;
+    if (g.movesLeft === 1) {
+      if (hasMove(g.s, c, true)) return;
+      if (inCheck(g.s, c)) {
+        g.phase = 'over'; g.winner = opp(c);
+        g.winReason = `체크메이트 — ${NAME[c]}이 턴을 끝낼 때 킹을 지킬 방법이 없습니다`;
+        say(g, g.winReason, 'win');
+      } else { say(g, `${NAME[c]}: 둘 수 있는 수가 없어 턴을 넘깁니다.`, 'sys'); endTurn(g); }
+    } else if (!hasMove(g.s, c, false)) { say(g, `${NAME[c]}: 둘 수 있는 수가 없어 턴을 넘깁니다.`, 'sys'); endTurn(g); }
+  }
+
+  function startMoves(g, n) {
+    if (n === 0) { say(g, `${NAME[g.turn]}: 0 → 수를 두지 못하고 턴을 넘깁니다.`); endTurn(g); return; }
+    g.movesLeft = n; g.movesTotal = n; g.phase = 'move';
+    checkStuck(g);
+  }
+
+  function drawCard(g) {
+    if (g.phase !== 'draw') return;
+    const c = g.turn, o = opp(c);
+    g.cardNote = ''; g.cardSeq++;
+    if (g.penalty[c]) {
+      // 벌칙: 숫자 카드 2장이 나올 때까지 뽑아 작은 쪽만 사용 (특수 카드는 버림)
+      g.penalty[c] = false;
+      const nums = []; let burned = 0;
+      while (nums.length < 2) { const k = pop(g); if (k.kind === 'num') nums.push(k); else burned++; }
+      const n = Math.min(nums[0].n, nums[1].n);
+      g.cards = nums.map((k) => ({ ...k, dim: false }));
+      const keep = nums[0].n <= nums[1].n ? 0 : 1; g.cards[1 - keep].dim = true;
+      g.cardNote = `벌칙: ${nums[0].n}과 ${nums[1].n} 중 작은 ${n}` + (burned ? ` (특수 카드 ${burned}장 버림)` : '');
+      say(g, `${NAME[c]} 벌칙 — ${nums[0].n}, ${nums[1].n} 중 작은 숫자 ${n}수`);
+      startMoves(g, n);
+      return;
+    }
+    const k = pop(g);
+    g.cards = [k];
+    if (k.kind === 'num') { if (k.n > 0) say(g, `${NAME[c]}: ${k.n} → ${k.n}수 연속`); startMoves(g, k.n); }
+    else if (k.kind === 'skip') {
+      g.cardNote = '상대 턴을 건너뜁니다. 바로 한 장 더 뽑으세요.';
+      say(g, `${NAME[c]}: Skip → ${NAME[o]}의 턴을 건너뛰고 다시 뽑습니다.`);
+      g.turnNo++;
+    } else if (k.kind === 'reverse') {
+      if (g.last && g.last.by === o) {
+        g.s = g.last.snap.s; g.taken = g.last.snap.taken;
+        g.hi = { from: g.last.to, to: g.last.from };
+        g.cardNote = `${NAME[o]}의 마지막 수(${sqName(g.last.from)}→${sqName(g.last.to)})를 되돌렸습니다.`;
+        say(g, `${NAME[c]}: Reverse → ${NAME[o]}의 마지막 수 ${sqName(g.last.from)}→${sqName(g.last.to)} 취소`);
+        g.last = null;
+      } else {
+        g.cardNote = '되돌릴 상대의 직전 수가 없어 효과가 없습니다.';
+        say(g, `${NAME[c]}: Reverse → 되돌릴 수가 없어 효과 없음`);
+      }
+      endTurn(g);
+    } else if (k.kind === 'draw2') {
+      g.penalty[o] = true;
+      g.cardNote = `${NAME[o]}은 다음 턴에 2장 중 작은 숫자만 씁니다.`;
+      say(g, `${NAME[c]}: Draw Two → ${NAME[o]}에게 벌칙`);
+      endTurn(g);
+    } else if (k.kind === 'wild') {
+      g.phase = 'wild'; g.cardNote = '1~4 중 둘 수의 개수를 고르세요.';
+    } else if (k.kind === 'wild4') {
+      g.penalty[o] = true;
+      g.cardNote = `4수를 두고, ${NAME[o]}은 다음 턴 벌칙을 받습니다.`;
+      say(g, `${NAME[c]}: Wild Draw Four → 4수 연속 + ${NAME[o]}에게 벌칙`);
+      startMoves(g, 4);
+    }
+  }
+
+  function chooseWild(g, n) {
+    if (g.phase !== 'wild' || n < 1 || n > 4) return;
+    say(g, `${NAME[g.turn]}: Wild → ${n}수 선택`);
+    g.cardNote = `Wild: ${n}수를 골랐습니다.`;
+    startMoves(g, n);
+  }
+
+  // 현재 턴에서 from 기물이 둘 수 있는 수 (마지막 수에는 킹 안전 제한 적용)
+  function legalFrom(g, from) {
+    if (g.phase !== 'move') return [];
+    const p = g.s.b[from];
+    if (!p || p[0] !== g.turn) return [];
+    return movesFrom(g.s, from, g.movesLeft === 1);
+  }
+
+  const PIECE = { p: '폰', n: '나이트', b: '비숍', r: '룩', q: '퀸', k: '킹' };
+
+  function playMove(g, m, promoType) {
+    if (g.phase !== 'move') return false;
+    const ok = legalFrom(g, m.from).find((x) => x.to === m.to);
+    if (!ok) return false;
+    const c = g.turn, piece = g.s.b[m.from];
+    g.last = { by: c, from: m.from, to: m.to, snap: { s: cloneChess(g.s), taken: { w: g.taken.w.slice(), b: g.taken.b.slice() } } };
+    const cap = applyMove(g.s, ok, promoType);
+    g.hi = { from: m.from, to: m.to };
+    if (cap) g.taken[c].push(cap);
+    let text = `${NAME[c]} ${PIECE[piece[1]]} ${sqName(m.from)}→${sqName(m.to)}`;
+    if (ok.flag === 'ck' || ok.flag === 'cq') text += ' (캐슬링)';
+    if (ok.flag === 'ep') text += ' (앙파상)';
+    if (cap) text += ` ×${PIECE[cap[1]]}`;
+    if (ok.promo) text += ` =${PIECE[promoType || 'q']}`;
+    say(g, text, 'mv');
+    if (cap && cap[1] === 'k') {
+      g.phase = 'over'; g.winner = c; g.winReason = `${NAME[c]}이 킹을 잡았습니다`;
+      say(g, g.winReason, 'win');
+      return true;
+    }
+    g.movesLeft--;
+    if (g.movesLeft === 0) endTurn(g); else checkStuck(g);
+    return true;
+  }
+
+  return { newGame, drawCard, chooseWild, legalFrom, playMove, inCheck, kingSq, sqName, opp, NAME,
+    _test: { initialChess, cloneChess, movesFrom, applyMove, hasMove, buildDeck } };
+})();
+if (typeof module !== 'undefined') module.exports = ChessUno;
+
+</script>
+<script>
+// 화면 그리기 + 입력 처리 + 온라인 대전(P2P) 동기화.
+// 온라인 구조: 방을 만든 쪽(host)의 브라우저가 게임 상태의 유일한 원본을 갖는다.
+// 참가자(guest)는 "카드 뽑기/수 두기" 같은 행동만 보내고, host가 검증·적용한 뒤 전체 상태를 다시 내려준다.
+(() => {
+  const E = ChessUno, $ = (id) => document.getElementById(id);
+  const ONLINE = window.CU_ONLINE !== false && typeof Peer === 'function' && 'RTCPeerConnection' in window;
+  const PEER_OPTS = window.CU_PEER_OPTS || {};
+  const PREFIX = 'chessuno1-';
+
+  let g, sel = null, targets = [], pendingPromo = null, flipped = false, shownSeq = -1;
+  let net = null; // 온라인일 때만: { role:'host'|'guest', code, peer, status, ... }
+
+  const store = {
+    get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* 저장 불가 환경은 무시 */ } },
+    del(k) { try { localStorage.removeItem(k); } catch (e) { /* 무시 */ } },
+  };
+
+  // ---------- 행동 처리 ----------
+  const myColor = () => (!net ? null : net.role === 'host' ? net.hostColor : net.myColor);
+  const canAct = () => g.phase !== 'over' && !pendingPromo && (!net || (myColor() === g.turn && (net.role === 'host' || net.status === 'ok')));
+
+  // 행동 하나를 게임 상태에 적용 (host와 로컬 모드에서만 실행)
+  function apply(a) {
+    if (a.t === 'draw') E.drawCard(g);
+    else if (a.t === 'wild') E.chooseWild(g, a.n);
+    else if (a.t === 'move') E.playMove(g, { from: a.from, to: a.to }, a.promo);
+    else if (a.t === 'new') { g = E.newGame(); if (net) net.hostColor = E.opp(net.hostColor); }
+  }
+
+  function act(a) {
+    sel = null; targets = []; pendingPromo = null;
+    if (net && net.role === 'guest') { if (net.conn && net.conn.open) net.conn.send(a); return; }
+    apply(a);
+    if (net) broadcast();
+    render();
+  }
+
+  // ---------- 온라인: host ----------
+  const seatOnline = () => net.conns.some((c) => c.open && c.token === net.seat && Date.now() - c.lastSeen < 12000);
+
+  function sendState(conn) {
+    if (!conn.open) return;
+    conn.send({ t: 'state', g: { ...g, deck: g.deck.length, rng: undefined }, you: conn.token === net.seat ? E.opp(net.hostColor) : null });
+  }
+
+  function broadcast() {
+    store.set('cu-room-' + net.code, { g, hostColor: net.hostColor, seat: net.seat });
+    net.conns.forEach(sendState);
+  }
+
+  function hostRoom(code) {
+    const saved = store.get('cu-room-' + code);
+    net = { role: 'host', code, status: 'connecting', conns: [], seat: null, hostColor: 'w', online: false, tries: 0 };
+    if (saved && saved.g) { g = saved.g; net.hostColor = saved.hostColor || 'w'; net.seat = saved.seat || null; }
+    else { g = E.newGame(); store.set('cu-room-' + code, { g, hostColor: 'w', seat: null }); }
+    openHostPeer();
+    setInterval(() => {
+      if (!net.peer.destroyed && net.peer.disconnected) net.peer.reconnect();
+      net.conns = net.conns.filter((c) => c.open || Date.now() - c.lastSeen < 12000);
+      const on = seatOnline();
+      if (on !== net.online) { net.online = on; render(); }
+    }, 3000);
+  }
+
+  function openHostPeer() {
+    const peer = net.peer = new Peer(PREFIX + net.code, PEER_OPTS);
+    peer.on('open', () => { net.status = 'ok'; net.tries = 0; render(); });
+    peer.on('connection', (conn) => {
+      conn.lastSeen = Date.now(); conn.token = null;
+      net.conns.push(conn);
+      conn.on('data', (m) => onHostData(conn, m));
+      conn.on('close', () => { net.online = seatOnline(); render(); });
+    });
+    peer.on('error', (err) => {
+      // unavailable-id: 같은 방 주소가 아직 중계 서버에 남아 있음 (새로고침 직후 또는 다른 탭에서 열려 있음)
+      if (err.type === 'unavailable-id' && net.tries++ < 8) { net.status = 'retry'; render(); setTimeout(() => { peer.destroy(); openHostPeer(); }, 2500); }
+      else if (!peer.open) { net.status = 'error'; net.err = err.type; render(); }
+    });
+  }
+
+  function onHostData(conn, m) {
+    if (!m || typeof m !== 'object') return;
+    conn.lastSeen = Date.now();
+    if (m.t === 'hello') {
+      conn.token = String(m.token || '');
+      if (!net.seat || !seatOnline()) net.seat = conn.token; // 빈 자리(또는 끊긴 자리)는 새로 온 사람이 앉는다
+      net.online = seatOnline();
+      broadcast(); render();
+    } else if (m.t === 'ping') conn.send({ t: 'pong' });
+    else if (conn.token && conn.token === net.seat) {
+      const guestColor = E.opp(net.hostColor);
+      const ok = m.t === 'new' ? g.phase === 'over' : ['draw', 'wild', 'move'].includes(m.t) && g.phase !== 'over' && g.turn === guestColor;
+      if (ok) { apply(m); broadcast(); render(); } else sendState(conn);
+    }
+  }
+
+  // ---------- 온라인: guest ----------
+  function joinRoom(code) {
+    let token = store.get('cu-token');
+    if (!token) { token = Math.random().toString(36).slice(2) + Date.now().toString(36); store.set('cu-token', token); }
+    net = { role: 'guest', code, status: 'connecting', myColor: null, conn: null, connAt: 0, lastPong: 0, token, got: false };
+    g = E.newGame();
+    openGuestPeer();
+    setInterval(guestLoop, 2500);
+  }
+
+  function openGuestPeer() {
+    const peer = net.peer = new Peer(PEER_OPTS);
+    peer.on('open', guestLoop);
+    peer.on('error', (err) => {
+      if (err.type === 'peer-unavailable') { net.conn = null; setStatus('nohost'); } // host가 접속해 있지 않음
+    });
+  }
+
+  function setStatus(s) { if (net.status !== s) { net.status = s; render(); } }
+
+  // 주기적으로 연결 상태를 점검하고, 끊겼으면 다시 붙는다
+  function guestLoop() {
+    const n = net, now = Date.now();
+    if (n.conn && n.conn.open) {
+      if (now - n.lastPong > 12000) { try { n.conn.close(); } catch (e) { /* 무시 */ } n.conn = null; setStatus('lost'); }
+      else { n.conn.send({ t: 'ping' }); return; }
+    }
+    if (n.peer.destroyed) { openGuestPeer(); return; }
+    if (n.peer.disconnected) { n.peer.reconnect(); return; }
+    if (!n.peer.open) return;
+    if (n.conn && now - n.connAt < 8000) return; // 연결 시도 중
+    if (n.conn) { try { n.conn.close(); } catch (e) { /* 무시 */ } }
+    const conn = n.conn = n.peer.connect(PREFIX + n.code, { reliable: true, serialization: 'json' });
+    n.connAt = now;
+    conn.on('open', () => { if (n.conn !== conn) return; n.lastPong = Date.now(); conn.send({ t: 'hello', token: n.token }); });
+    conn.on('data', (m) => {
+      if (n.conn !== conn || !m) return;
+      n.lastPong = Date.now();
+      if (m.t !== 'state') return;
+      g = m.g; g.deck = new Array(m.g.deck); // guest는 덱 내용을 받지 않고 남은 장수만 안다
+      n.myColor = m.you; n.got = true; n.status = 'ok';
+      sel = null; targets = []; pendingPromo = null;
+      render();
+    });
+    conn.on('close', () => { if (n.conn === conn) { n.conn = null; setStatus('lost'); } });
+  }
+
+  // ---------- 방 만들기 / 나가기 ----------
+  const roomOfHash = () => { const m = /^#room-([a-z0-9]{4,12})$/i.exec(location.hash); return m ? m[1].toLowerCase() : null; };
+  const roomLink = () => location.href.split('#')[0] + '#room-' + net.code;
+
+  function createRoom() {
+    const abc = 'abcdefghjkmnpqrstuvwxyz23456789';
+    let code = '';
+    for (let i = 0; i < 6; i++) code += abc[Math.floor(Math.random() * abc.length)];
+    store.set('cu-room-' + code, { g, hostColor: 'w', seat: null }); // 지금 두던 판을 그대로 방으로 가져간다
+    location.hash = 'room-' + code; // hashchange → 새로고침되며 host로 시작
+  }
+
+  function leaveRoom() {
+    if (net.role === 'host') store.del('cu-room-' + net.code);
+    try { net.peer.destroy(); } catch (e) { /* 무시 */ }
+    history.replaceState(null, '', location.href.split('#')[0]);
+    location.reload();
+  }
+
+  // ---------- 그리기 ----------
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const btn = (cls, text, fn) => { const b = el('button', cls, text); b.type = 'button'; b.addEventListener('click', fn); return b; };
+
+  function cardEl(k) {
+    const face = k.kind === 'num' ? String(k.n) : { skip: '⊘', reverse: '⇄', draw2: '+2', wild: 'WILD', wild4: '+4' }[k.kind];
+    const c = el('div', `card ${k.color}${k.kind === 'wild' ? ' sm' : ''}${k.dim ? ' dim' : ''}`);
+    c.appendChild(el('span', '', face));
+    c.title = { num: `숫자 ${k.n}`, skip: 'Skip', reverse: 'Reverse', draw2: 'Draw Two', wild: 'Wild', wild4: 'Wild Draw Four' }[k.kind];
+    return c;
+  }
+
+  function playerBar(node, c) {
+    node.textContent = '';
+    node.appendChild(el('div', `avatar pc ${c}k`));
+    const who = el('span', 'who', E.NAME[c]);
+    if (net && myColor()) who.appendChild(el('small', '', c === myColor() ? ' (나)' : ' (상대)'));
+    node.appendChild(who);
+    const t = el('div', 'taken');
+    const order = 'qrbnp';
+    g.taken[c].slice().sort((a, b) => order.indexOf(a[1]) - order.indexOf(b[1])).forEach((p) => t.appendChild(el('i', `pc ${p}`)));
+    node.appendChild(t);
+    if (g.penalty[c]) node.appendChild(el('span', 'badge pen', '벌칙: 2장 중 작은 수'));
+    if (g.phase !== 'over' && g.turn === c) node.appendChild(el('span', 'badge turn', '차례'));
+  }
+
+  let netSig = '';
+  function renderNet() {
+    const box = $('net');
+    $('mkroom').hidden = !ONLINE || !!net;
+    $('autoflip-l').hidden = !!net;
+    $('newgame').hidden = !!net && net.role !== 'host';
+    box.hidden = !net;
+    if (!net) return;
+    let dot = 'wait', text;
+    if (net.role === 'host') {
+      if (net.status === 'connecting') text = '방을 여는 중…';
+      else if (net.status === 'retry') text = '방을 다시 여는 중… (다른 탭에 같은 방이 열려 있으면 닫아 주세요)';
+      else if (net.status === 'error') { dot = 'bad'; text = `중계 서버에 연결하지 못했습니다 (${net.err}). 새로고침해 보세요.`; }
+      else if (net.online) { dot = 'ok'; text = '상대가 접속해 있습니다.'; }
+      else if (net.seat) { dot = 'bad'; text = '상대 연결이 끊겼습니다. 같은 링크로 다시 들어오면 이어집니다.'; }
+      else text = '상대를 기다리는 중 — 아래 링크를 보내세요.';
+    } else if (net.status === 'ok') { dot = 'ok'; text = net.myColor ? `연결됨 — 나는 ${E.NAME[net.myColor]}입니다.` : '관전 중 (자리가 이미 찼습니다).'; }
+    else if (net.status === 'nohost') { dot = 'bad'; text = '방장이 접속해 있지 않습니다. 계속 다시 시도하는 중…'; }
+    else if (net.status === 'lost') { dot = 'bad'; text = '연결이 끊겼습니다. 다시 연결하는 중…'; }
+    else text = '방에 연결하는 중…';
+    const sig = [net.role, dot, text].join('|');
+    if (sig === netSig) return;
+    netSig = sig;
+    box.textContent = '';
+    const st = el('div', 'state');
+    st.appendChild(el('i', 'dot ' + dot));
+    st.appendChild(el('span', '', text));
+    box.appendChild(st);
+    const row = el('div', 'row');
+    if (net.role === 'host') {
+      const inp = el('input'); inp.id = 'roomlink'; inp.readOnly = true; inp.value = roomLink();
+      inp.setAttribute('aria-label', '방 링크');
+      inp.addEventListener('focus', () => inp.select());
+      row.appendChild(inp);
+      const cp = btn('btn', '링크 복사', () => {
+        const done = () => { cp.textContent = '복사됨'; setTimeout(() => { cp.textContent = '링크 복사'; }, 1500); };
+        const fallback = () => { inp.focus(); inp.select(); };
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(inp.value).then(done, fallback); else fallback();
+      });
+      row.appendChild(cp);
+    }
+    row.appendChild(btn('btn', '방 나가기', leaveRoom));
+    box.appendChild(row);
+  }
+
+  function render() {
+    const over = g.phase === 'over', mine = myColor();
+    if (net) flipped = mine === 'b';
+    else if ($('autoflip').checked && !over) flipped = g.turn === 'b';
+    const active = canAct();
+
+    const board = $('board');
+    board.textContent = '';
+    const chk = !over && E.inCheck(g.s, g.turn) ? E.kingSq(g.s.b, g.turn) : -1;
+    for (let v = 0; v < 64; v++) {
+      const i = flipped ? 63 - v : v, r = i >> 3, f = i % 8, p = g.s.b[i];
+      const s = el('button', 'sq' + ((r + f) % 2 ? ' dk' : ''));
+      s.type = 'button';
+      s.setAttribute('aria-label', E.sqName(i) + (p ? ' ' + p : ''));
+      if (g.hi && (g.hi.from === i || g.hi.to === i)) s.classList.add('hi');
+      if (sel === i) s.classList.add('sel');
+      if (chk === i) s.classList.add('chk');
+      const t = targets.find((m) => m.to === i);
+      if (t) { s.classList.add('can'); if (p || t.flag === 'ep') s.classList.add('cap'); }
+      if (active && g.phase === 'move' && p && p[0] === g.turn) s.classList.add('mine');
+      if (v % 8 === 0) s.appendChild(el('span', 'co rk', String(8 - r)));
+      if (v >= 56) s.appendChild(el('span', 'co fl', 'abcdefgh'[f]));
+      if (p) s.appendChild(el('span', `pc ${p}`));
+      s.addEventListener('click', () => clickSq(i));
+      board.appendChild(s);
+    }
+    playerBar($('p-top'), flipped ? 'w' : 'b');
+    playerBar($('p-bot'), flipped ? 'b' : 'w');
+
+    const name = E.NAME[g.turn], st = $('status');
+    const who = !net || !mine ? `${name} 차례` : g.turn === mine ? `내 차례 (${name})` : `상대 차례 (${name})`;
+    const waiting = net && mine && g.turn !== mine;
+    st.textContent = '';
+    let head, sub = g.cardNote;
+    if (net && net.role === 'guest' && !net.got) { head = '방에 연결하는 중…'; sub = ''; }
+    else if (over) { head = `${E.NAME[g.winner]} 승리`; sub = g.winReason; }
+    else if (g.phase === 'draw') { head = waiting ? `${who} — 카드를 뽑는 중` : `${who} — 카드를 뽑으세요`; if (g.penalty[g.turn]) sub = '벌칙 적용: 2장을 뽑아 작은 숫자만 씁니다.'; }
+    else if (g.phase === 'wild') head = waiting ? `${who} — Wild 숫자를 고르는 중` : `${who} — Wild! 숫자를 고르세요`;
+    else {
+      head = `${who} — 남은 수 ${g.movesLeft} / ${g.movesTotal}`;
+      if (g.movesLeft === 1 && g.movesTotal > 1) sub = '마지막 수입니다. 킹이 안전해야 합니다.';
+      else if (g.movesLeft === 1 && E.inCheck(g.s, g.turn)) sub = '체크! 킹을 지키는 수만 둘 수 있습니다.';
+    }
+    st.appendChild(document.createTextNode(head));
+    st.appendChild(el('small', '', sub || ''));
+    $('turnno').textContent = `${g.turnNo}번째 턴`;
+    const pips = $('pips');
+    pips.textContent = '';
+    if (g.phase === 'move') for (let k = 0; k < g.movesTotal; k++) pips.appendChild(el('i', k < g.movesTotal - g.movesLeft ? 'used' : ''));
+
+    const deck = $('deck'), drawable = active && g.phase === 'draw';
+    deck.textContent = '';
+    deck.appendChild(el('b', '', String(g.deck.length)));
+    deck.appendChild(document.createTextNode(drawable ? '뽑기' : '덱'));
+    deck.disabled = !drawable;
+    deck.classList.toggle('live', drawable);
+    const drawn = $('drawn');
+    drawn.textContent = '';
+    if (!g.cards.length) drawn.appendChild(el('div', 'empty-card'));
+    g.cards.forEach((k) => { const c = cardEl(k); if (shownSeq !== g.cardSeq) c.classList.add('new'); drawn.appendChild(c); });
+    shownSeq = g.cardSeq;
+    const wp = $('wildpick');
+    wp.hidden = !(active && g.phase === 'wild');
+    if (!wp.childElementCount) for (let n = 1; n <= 4; n++) wp.appendChild(btn('', String(n), () => act({ t: 'wild', n })));
+
+    const log = $('log');
+    log.textContent = '';
+    g.log.slice(-150).forEach((l) => log.appendChild(el('div', l.cls, l.text)));
+    log.scrollTop = log.scrollHeight;
+
+    const ov = $('overlay');
+    ov.textContent = '';
+    ov.hidden = true;
+    if (pendingPromo) {
+      const d = el('div', 'dialog');
+      d.appendChild(el('p', '', '어떤 기물로 승격할까요?'));
+      const row = el('div', 'promo');
+      for (const t of 'qrbn') {
+        const m = pendingPromo;
+        const b = btn(`pc ${g.turn}${t}`, null, () => act({ t: 'move', from: m.from, to: m.to, promo: t }));
+        b.setAttribute('aria-label', { q: '퀸', r: '룩', b: '비숍', n: '나이트' }[t]);
+        row.appendChild(b);
+      }
+      d.appendChild(row); ov.appendChild(d); ov.hidden = false;
+    } else if (over) {
+      const d = el('div', 'dialog');
+      d.appendChild(el('h2', '', net && mine ? (g.winner === mine ? '이겼습니다' : '졌습니다') : `${E.NAME[g.winner]} 승리`));
+      d.appendChild(el('p', '', g.winReason));
+      if (!net || mine) d.appendChild(btn('btn primary', net ? '다시 하기 (색 바꿈)' : '다시 하기', () => act({ t: 'new' })));
+      ov.appendChild(d); ov.hidden = false;
+    }
+    renderNet();
+  }
+
+  function clickSq(i) {
+    if (!canAct() || g.phase !== 'move') return;
+    const t = targets.find((m) => m.to === i);
+    if (t) { if (t.promo) { pendingPromo = t; render(); } else act({ t: 'move', from: t.from, to: t.to }); return; }
+    const p = g.s.b[i];
+    if (p && p[0] === g.turn && sel !== i) { sel = i; targets = E.legalFrom(g, i); }
+    else { sel = null; targets = []; }
+    render();
+  }
+
+  $('deck').addEventListener('click', () => { if (canAct() && g.phase === 'draw') act({ t: 'draw' }); });
+  $('newgame').addEventListener('click', () => act({ t: 'new' }));
+  $('autoflip').addEventListener('change', () => { if (!$('autoflip').checked) flipped = false; render(); });
+  $('mkroom').addEventListener('click', createRoom);
+  window.addEventListener('hashchange', () => location.reload());
+
+  // 시작: 주소에 #room-코드가 있으면 온라인, 없으면 한 화면에서 번갈아 두는 로컬 대전
+  const code = ONLINE ? roomOfHash() : null;
+  if (code && store.get('cu-room-' + code)) hostRoom(code);
+  else if (code) joinRoom(code);
+  else g = E.newGame();
+  render();
+})();
+
+</script>
+</body>
+</html>
